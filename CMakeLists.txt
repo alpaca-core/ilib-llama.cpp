@@ -69,7 +69,12 @@ add_subdirectory(llama.cpp)
 add_subdirectory(code)
 
 if(AC_LLAMA_BUILD_TESTS OR AC_LLAMA_BUILD_EXAMPLES)
-    #add_subdirectory(test-models)
+    CPMAddPackage(
+        NAME ac-test-data-llama
+        VERSION 1.0.0
+        GIT_REPOSITORY https://huggingface.co/alpaca-core/ac-test-data-llama
+        GIT_TAG e6860e89d869ea815a4107bce3bb41af9ad1c1f0
+    )
 endif()
 
 #~ if(AC_LLAMA_BUILD_TESTS)
@@ -80,9 +85,9 @@ endif()
 #~     add_subdirectory(test)
 #~ endif()
 
-#~ if(AC_LLAMA_BUILD_EXAMPLES)
-#~     add_subdirectory(example)
-#~ endif()
+if(AC_LLAMA_BUILD_EXAMPLES)
+    add_subdirectory(example)
+endif()
 
 #~ if(BUILD_AC_LLAMA_PLUGIN)
 #~     add_subdirectory(ac-local-plugin)
