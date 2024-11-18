@@ -1,11 +1,10 @@
 // Copyright (c) Alpaca Core
 // SPDX-License-Identifier: MIT
 //
-#include <ac/local/LocalLlama.hpp>
-
-#include <ac/local/ModelFactory.hpp>
 #include <ac/local/Model.hpp>
 #include <ac/local/Instance.hpp>
+#include <ac/local/ModelLoaderRegistry.hpp>
+#include <ac/local/Lib.hpp>
 
 #include <ac/jalog/Instance.hpp>
 #include <ac/jalog/sinks/DefaultSink.hpp>
@@ -13,17 +12,17 @@
 #include <iostream>
 
 #include "ac-test-data-llama-dir.h"
+#include "aclp-llama-info.h"
 
 int main() try {
     ac::jalog::Instance jl;
     jl.setup().add<ac::jalog::sinks::DefaultSink>();
 
-    ac::local::ModelFactory factory;
-    ac::local::addLlamaInference(factory);
+    ac::local::Lib::loadPlugin(ACLP_llama_PLUGIN_FILE);
 
-    auto model = factory.createModel(
+    auto model = ac::local::Lib::modelLoaderRegistry().createModel(
         {
-            .inferenceType = "llama.cpp",
+            .inferenceType = "llama",
             .assets = {
                 {.path = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"}
                 //{.path = "D:/mod/Mistral-7B-Instruct-v0.1-GGUF/mistral-7b-instruct-v0.1.Q8_0.gguf"}

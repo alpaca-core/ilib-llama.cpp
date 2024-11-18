@@ -1,19 +1,17 @@
 # Copyright (c) Alpaca Core
 # SPDX-License-Identifier: MIT
 #
-ac_dep(test-data-llama)
-
-function(add_local_llama_example name)
-    set(tgt example-ac-local-llama-${name})
-    add_executable(${tgt} e-local-llama-${name}.cpp)
+function(add_llama_plugin_example name)
+    set(tgt example-aclp-llama-${name})
+    add_executable(${tgt} ep-${name}.cpp)
     target_link_libraries(${tgt} PRIVATE
         ac::local
-        ac::local-llama
         ac::jalog
         ac-test-data::llama
+        aclp::llama-info
     )
     set_target_properties(${tgt} PROPERTIES FOLDER example)
 endfunction()
 
-add_local_llama_example(run)
-add_local_llama_example(chat)
+add_llama_plugin_example(run)
+add_llama_plugin_example(chat)

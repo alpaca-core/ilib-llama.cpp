@@ -1,7 +1,6 @@
 // Copyright (c) Alpaca Core
 // SPDX-License-Identifier: MIT
 //
-#include "LocalLlama.hpp"
 #include "LlamaModelSchema.hpp"
 
 #include <ac/llama/Session.hpp>
@@ -13,13 +12,15 @@
 #include <ac/local/Instance.hpp>
 #include <ac/local/Model.hpp>
 #include <ac/local/ModelLoader.hpp>
-#include <ac/local/ModelFactory.hpp>
 
 #include <astl/move.hpp>
 #include <astl/move_capture.hpp>
 #include <astl/iile.h>
 #include <astl/throw_stdex.hpp>
 #include <astl/workarounds.h>
+
+#include "aclp-llama-version.h"
+#include "aclp-llama-interface.hpp"
 
 namespace ac::local {
 
@@ -242,6 +243,15 @@ public:
 
 class LlamaModelLoader final : public ModelLoader {
 public:
+    virtual const Info& info() const noexcept override {
+        static Info i = {
+            .name = "ac llama.cpp",
+            .vendor = "Alpaca Core",
+            .inferenceSchemaTypes = {"llama"},
+        };
+        return i;
+    }
+
     virtual ModelPtr loadModel(ModelDesc desc, Dict, ProgressCb progressCb) override {
         if (desc.assets.size() != 1) throw_ex{} << "llama: expected exactly one local asset";
         auto& gguf = desc.assets.front().path;
@@ -254,13 +264,33 @@ public:
         }, astl::move(modelParams));
     }
 };
+} // namespace
+
+} // namespace ac::local
+
+namespace ac::llama {
+
+void init() {
+    initLibrary();
 }
 
-void addLlamaInference(ModelFactory& provider) {
-    ac::llama::initLibrary();
-
-    static LlamaModelLoader loader;
-    provider.addLoader("llama.cpp", loader);
+std::vector<ac::local::ModelLoaderPtr> getLoaders() {
+    std::vector<ac::local::ModelLoaderPtr> ret;
+    ret.push_back(std::make_unique<local::LlamaModelLoader>());
+    return ret;
 }
 
-} // namespace ac
+local::PluginInterface getPluginInterface() {
+    return {
+        .label = "ac llama.cpp",
+        .desc = "llama.cpp plugin for ac-local",
+        .vendor = "Alpaca Core",
+        .version = astl::version{
+            ACLP_llama_VERSION_MAJOR, ACLP_llama_VERSION_MINOR, ACLP_llama_VERSION_PATCH
+        },
+        .init = init,
+        .getLoaders = getLoaders,
+    };
+}
+
+} // namespace ac::llama
