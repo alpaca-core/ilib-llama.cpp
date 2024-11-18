@@ -9,7 +9,7 @@ target_link_libraries(ac-llama
         llama
         ac::jalog
     PUBLIC
-        splat::splat
+        ac::astl
 )
 target_sources(ac-llama PRIVATE
     ac/llama/export.h
