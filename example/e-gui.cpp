@@ -7,11 +7,8 @@
 #include <ac/llama/Session.hpp>
 #include <ac/llama/AntipromptManager.hpp>
 
-#include <imgui.h>
+#include <ImGuiSdlApp.hpp>
 #include <imgui_stdlib.h>
-#include <imgui_impl_sdl2.h>
-#include <imgui_impl_sdlrenderer2.h>
-#include <SDL.h>
 
 #include <ac/jalog/Instance.hpp>
 #include <ac/jalog/Log.hpp>
@@ -190,7 +187,7 @@ private:
     std::unique_ptr<State> m_state;
 };
 
-int main(int, char**) {
+int main(int, char**) try { // this signature is required by SDL
     // setup logging
     ac::jalog::Instance jl;
     jl.setup().add<ac::jalog::sinks::ColorSink>();
@@ -198,48 +195,14 @@ int main(int, char**) {
     // setup llama
     ac::llama::initLibrary();
 
-    // setup sdl
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
-        sdlError("Error: SDL_Init");
-    }
-
-    SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1");
-
-    SDL_Window* window = SDL_CreateWindow(
-        "Alpaca Core llama.cpp example",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        1280, 720,
-        SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    if (!window) {
-        return sdlError("Error: SDL_CreateWindow");
-    }
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
-    if (renderer == nullptr) {
-        return sdlError("Error: SDL_CreateRenderer");
-    }
-
-    SDL_RendererInfo info;
-    SDL_GetRendererInfo(renderer, &info);
-    AC_JALOG(Info, "SDL_Renderer: ", info.name);
-
-    // setup imgui
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    auto& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-
-    ImGui::StyleColorsDark();
-
-    // setup backends
-    ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
-    ImGui_ImplSDLRenderer2_Init(renderer);
+    ac::ImGuiSdlApp app;
+    app.init("ImGui SDL example", { 1280, 720 });
 
     // app state
-
     auto models = std::to_array({
         UModel(AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"),
         UModel(AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-f16.gguf")
-    });
+        });
     UModel* selectedModel = models.data();
     UModel::State::Instance* selectedInstance = nullptr;
 
@@ -253,24 +216,11 @@ int main(int, char**) {
 
     // main loop
     bool done = false;
-    while (!done)
-    {
-        // frame setup
-        SDL_Event event;
-        while (SDL_PollEvent(&event))
-        {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT)
-                done = true;
-            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
-                done = true;
-        }
+    while (!done) {
+        app.processInput(done);
+        app.beginFrame();
 
-        ImGui_ImplSDLRenderer2_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
-        // app logic
+        auto& io = ImGui::GetIO();
         auto* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->Pos);
         ImGui::SetNextWindowSize(viewport->Size);
@@ -285,6 +235,7 @@ int main(int, char**) {
 
         ImGui::Text("Models");
         ImGui::BeginListBox("##models", {-1, 0});
+
         for (auto& m : models) {
             ImGui::PushID(&m);
 
@@ -419,22 +370,17 @@ int main(int, char**) {
         ImGui::EndTable();
         ImGui::End();
 
-        // frame render
-        ImGui::Render();
-        SDL_RenderSetScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
-        SDL_RenderClear(renderer);
-        ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
-        SDL_RenderPresent(renderer);
+        app.endFrame();
     }
-
-    // cleanup
-    ImGui_ImplSDLRenderer2_Shutdown();
-    ImGui_ImplSDL2_Shutdown();
-    ImGui::DestroyContext();
-
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
 
     return 0;
 }
+catch (const std::exception& e) {
+    std::cerr << "Error: " << e.what() << "\n";
+    return -1;
+}
+catch (...) {
+    std::cerr << "Unknown error\n";
+    return -1;
+}
+

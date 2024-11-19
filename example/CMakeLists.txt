@@ -9,13 +9,14 @@ target_link_libraries(example-ac-llama-basic PRIVATE
 )
 set_target_properties(example-ac-llama-basic PROPERTIES FOLDER example)
 
-if(TARGET ac-dev::imgui)
+CPMAddPackage(gh:alpaca-core/helper-imgui-sdl@1.0.0)
+if(TARGET ac-dev::imgui-sdl-app)
     add_executable(example-ac-llama-gui e-gui.cpp)
     target_link_libraries(example-ac-llama-gui PRIVATE
         ac::llama
         ac-test-data::llama
         ac::jalog
-        ac-dev::imgui
+        ac-dev::imgui-sdl-app
     )
     set_target_properties(example-ac-llama-gui PROPERTIES FOLDER example)
 endif()
