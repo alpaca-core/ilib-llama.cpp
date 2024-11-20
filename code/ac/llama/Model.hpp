@@ -33,7 +33,7 @@ public:
     bool hasEncoder() const noexcept;
     bool prefixInputsWithBos() const noexcept { return m_params.prefixInputsWithBos; }
 
-    // fallback to "chatml" if the uderlying model does not provide a chat template
+    // fallback to "chatml" if the underlying model does not provide a chat template
     std::string getChatTemplateId() const;
 
     llama_model* lmodel() noexcept { return m_lmodel.get(); }
