@@ -1,0 +1,90 @@
+---
+id: llama
+description: Inference based on our fork of https://github.com/ggerganov/llama.cpp
+params:
+  type: 'null'
+instances:
+  general:
+    description: General instance
+    params:
+      type: object
+      properties:
+        ctx_size:
+          description: Size of the context
+          type: integer
+        batch_size:
+          description: Size of the single batch
+          type: integer
+        ubatch_size:
+          description: Size of the contex
+          type: integer
+    ops:
+      run:
+        description: Run the llama.cpp inference and produce some output
+        params:
+          type: object
+          properties:
+            prompt:
+              description: Prompt to complete
+              type: string
+              default: ''
+            antiprompts:
+              description: Antiprompts to trigger stop
+              type: array
+              items:
+                type: string
+              default: []
+            max_tokens:
+              description: Maximum number of tokens to generate. 0 for unlimited
+              type: integer
+              default: 0
+        return:
+          type: object
+          properties:
+            result:
+              description: Generated result (completion of prompt)
+              type: string
+          required:
+          - result
+      begin-chat:
+        description: Begin a chat session
+        params:
+          type: object
+          properties:
+            setup:
+              description: Initial setup for the chat session
+              type: string
+              default: ''
+            role_user:
+              description: Role name for the user
+              type: string
+              default: User
+            role_assistant:
+              description: Role name for the assistant
+              type: string
+              default: Assistant
+        return:
+          type: 'null'
+      add-chat-prompt:
+        description: Add a prompt to the chat session as a user
+        params:
+          type: object
+          properties:
+            prompt:
+              description: Prompt to add to the chat session
+              type: string
+              default: ''
+        return:
+          type: 'null'
+      get-chat-response:
+        description: Get a response from the chat session
+        params:
+          type: 'null'
+        return:
+          type: object
+          properties:
+            response:
+              description: Response from the chat session
+              type: string
+          required:
+          - response

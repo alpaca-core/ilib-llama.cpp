@@ -1,8 +1,6 @@
 // Copyright (c) Alpaca Core
 // SPDX-License-Identifier: MIT
 //
-#include "LlamaModelSchema.hpp"
-
 #include <ac/llama/Session.hpp>
 #include <ac/llama/Instance.hpp>
 #include <ac/llama/Init.hpp>
@@ -19,8 +17,11 @@
 #include <astl/throw_stdex.hpp>
 #include <astl/workarounds.h>
 
+#include <ac/Dict.hpp>
+
 #include "aclp-llama-version.h"
 #include "aclp-llama-interface.hpp"
+#include "llama-schema.hpp"
 
 namespace ac::local {
 
@@ -42,22 +43,21 @@ public:
         : m_session(instance.newSession({}))
         , m_vocab(instance.model().vocab())
     {
-        Schema::OpChatBegin::Params schemaParams(params);
-        auto setup = schemaParams.setup.getValue();
-        m_promptTokens = instance.model().vocab().tokenize(setup, true, true);
+        auto schemaParams = Schema::OpBeginChat::Params::fromDict(params);
+        m_promptTokens = instance.model().vocab().tokenize(schemaParams.setup, true, true);
         m_session.setInitialPrompt(m_promptTokens);
 
         m_userPrefix = "\n";
-        m_userPrefix += schemaParams.roleUser.getValue();
+        m_userPrefix += schemaParams.roleUser;
         m_userPrefix += ":";
         m_assistantPrefix = "\n";
-        m_assistantPrefix += schemaParams.roleAssistant.getValue();;
+        m_assistantPrefix += schemaParams.roleAssistant;
         m_assistantPrefix += ":";
     }
 
     void pushPrompt(Dict& params) {
-        Schema::OpChatAddPrompt::Params schemaParams(params);
-        auto prompt = std::string(schemaParams.prompt.getValue());
+        auto schemaParams = Schema::OpAddChatPrompt::Params::fromDict(params);
+        auto& prompt = schemaParams.prompt;
 
         // prefix with space as the generated content doesn't include it
         prompt = ' ' + prompt;
@@ -78,7 +78,7 @@ public:
 
     Dict getResponse() {
         if (m_addAssistantPrefix) {
-            // genrated responses are requested first, but we haven't yet fed the assistant prefix to the model
+            // generated responses are requested first, but we haven't yet fed the assistant prefix to the model
             auto prompt = m_assistantPrefix;
             assert(m_promptTokens.empty()); // nothing should be pending here
             m_promptTokens = m_vocab.tokenize(prompt, false, false);
@@ -89,8 +89,11 @@ public:
         ac::llama::IncrementalStringFinder finder(m_userPrefix);
 
         m_addUserPrefix = true;
-        std::string response;
-        for (int i=0; i<1000; ++i) {
+        Schema::OpGetChatResponse::Return ret;
+        auto& response = ret.response;
+
+
+        for (int i = 0; i < 1000; ++i) {
             auto t = m_session.getToken();
             if (t == ac::llama::Token_Invalid) {
                 // no more tokens
@@ -119,10 +122,7 @@ public:
             response.erase(0, 1);
         }
 
-        Dict ret;
-        Schema::OpChatGetResponse::Return result(ret);
-        result.response.setValue(astl::move(response));
-        return ret;
+        return ret.toDict();
     }
 };
 
@@ -142,9 +142,9 @@ public:
     {}
 
     Dict run(Dict& params) {
-        Schema::OpRun::Params schemaParams(params);
-        auto prompt = schemaParams.prompt.getValue();
-        const auto maxTokens = schemaParams.maxTokens.getValue();
+        auto schemaParams = Schema::OpRun::Params::fromDict(params);
+        auto& prompt = schemaParams.prompt;
+        const auto maxTokens = schemaParams.maxTokens;
 
         auto s = m_instance.newSession({});
 
@@ -154,13 +154,13 @@ public:
         auto& model = m_instance.model();
         ac::llama::AntipromptManager antiprompt;
 
-        auto& antiprompts = schemaParams.antiprompts;
-        for (size_t i = 0; i < antiprompts.size(); ++i) {
-            antiprompt.addAntiprompt(antiprompts[i].getValue());
+        for (auto& ap : schemaParams.antiprompts) {
+            antiprompt.addAntiprompt(ap);
         }
 
-        std::string result;
-        for (uint32_t i = 0; i < maxTokens; ++i) {
+        Schema::OpRun::Return ret;
+        auto& result = ret.result;
+        for (int i = 0; i < maxTokens; ++i) {
             auto t = s.getToken();
             if (t == ac::llama::Token_Invalid) {
                 break;
@@ -174,23 +174,23 @@ public:
             result += tokenStr;
         }
 
-        return {{"result", astl::move(result)}};
+        return ret.toDict();
     }
 
     virtual Dict runOp(std::string_view op, Dict params, ProgressCb) override {
         switch (Schema::getOpIndexById(op)) {
         case Schema::opIndex<Schema::OpRun>:
             return run(params);
-        case Schema::opIndex<Schema::OpChatBegin>:
+        case Schema::opIndex<Schema::OpBeginChat>:
             m_chatSession.emplace(m_instance, params);
             return {};
-        case Schema::opIndex<Schema::OpChatAddPrompt>:
+        case Schema::opIndex<Schema::OpAddChatPrompt>:
             if (!m_chatSession) {
                 throw_ex{} << "llama: chat not started";
             }
             m_chatSession->pushPrompt(params);
             return {};
-        case Schema::opIndex<Schema::OpChatGetResponse>:
+        case Schema::opIndex<Schema::OpGetChatResponse>:
             if (!m_chatSession) {
                 throw_ex{} << "llama: chat not started";
             }
@@ -207,18 +207,18 @@ class LlamaModel final : public Model {
 
     llama::Instance::InitParams translateInstanceParams(Dict& params) {
         llama::Instance::InitParams initParams;
-        Schema::InstanceGeneral::Params schemaParams(params);
+        auto schemaParams = Schema::InstanceGeneral::Params::fromDict(params);
 
-        if (auto value = schemaParams.ctxSize.optGetValue()) {
-            initParams.ctxSize = *value;
+        if (schemaParams.ctxSize) {
+            initParams.ctxSize = *schemaParams.ctxSize;
         }
 
-        if (auto value = schemaParams.batchSize.optGetValue()) {
-            initParams.batchSize = *value;
+        if (schemaParams.batchSize) {
+            initParams.batchSize = *schemaParams.batchSize;
         }
 
-        if (auto value = schemaParams.ubatchSize.optGetValue()) {
-            initParams.ubatchSize = *value;
+        if (schemaParams.ubatchSize) {
+            initParams.ubatchSize = *schemaParams.ubatchSize;
         }
 
         return initParams;
@@ -250,6 +250,10 @@ public:
             .inferenceSchemaTypes = {"llama"},
         };
         return i;
+    }
+
+    virtual bool canLoadModel(const ModelDesc& desc, const Dict&) const noexcept override {
+        return desc.inferenceType == "llama";
     }
 
     virtual ModelPtr loadModel(ModelDesc desc, Dict, ProgressCb progressCb) override {
