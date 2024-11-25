@@ -7,6 +7,16 @@ This is a wrapper of llama.cpp implemented as per the discussion [Integration of
 
 As mentioned in the discussion the (maybe distant) future plan is to ditch llama.cpp by reimplementing entirely with vanilla ggml and a C++ interface.
 
+## Build
+
+> [!IMPORTANT]
+> When cloning this repo, don't forget to fetch the submodules.
+> * Either: `$ git clone https://github.com/alpaca-core/ac-local.git --recurse-submodules`
+> * Or:
+>    * `$ git clone https://github.com/alpaca-core/ac-local.git`
+>    * `$ cd ac-local`
+>    * `$ git submodule update --init --recursive`
+
 ## Reimplementation Notes:
 
 * Better error handling, please
