@@ -20,6 +20,13 @@ public:
         uint32_t ctxSize = 0; // context size for the model (0 = maximum allowed by model)
         uint32_t batchSize = 2048; // logical batch size for prompt processing (may be silently truncated to ctxSize)
         uint32_t ubatchSize = 512; // physical batch size for prompt processing (0 = batchSize)
+        bool flashAttn = false; // enable flash attention
+
+        struct LoraConfig {
+            std::string path;
+            float scale = 1.0f;
+        };
+        std::vector<LoraConfig> loraConfigs; // LORA adapters to apply
     };
 
     explicit Instance(Model& model, InitParams params);
