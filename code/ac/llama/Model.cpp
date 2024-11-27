@@ -33,19 +33,21 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 }
 } // namespace
 
-// Model::Model(const char* pathToGguf, ModelLoadProgressCb loadProgressCb, Params params)
-//     : m_params(astl::move(params))
-//     , m_lmodel(llama_load_model_from_file(pathToGguf, llamaFromModelParams(m_params, loadProgressCb)), llama_free_model)
-// {
-//     if (!m_lmodel) {
-//         throw std::runtime_error("Failed to load model");
-//     }
-// }
+Model::ModelRegistry Model::s_modelRegistry;
 
-Model::Model(std::shared_ptr<llama_model> lmodel, Params params)
+Model::Model(const char* pathToGguf, std::vector<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params)
     : m_params(astl::move(params))
-    , m_lmodel(astl::move(lmodel))
-{}
+{
+    m_lmodel = s_modelRegistry.loadModel(pathToGguf, std::move(loadProgressCb), m_params);
+    if (!m_lmodel) {
+        throw std::runtime_error("Failed to load model");
+    }
+
+    for(auto& loraPath: loras) {
+        auto lora = s_modelRegistry.loadLora(this, loraPath);
+        m_loras.push_back(lora);
+    }
+}
 
 Model::~Model() = default;
 
@@ -87,9 +89,8 @@ LoraAdapter::LoraAdapter(Model& model, std::string path, float scale)
     }
 }
 
-Model ModelRegistry::loadModel(
+std::shared_ptr<llama_model> Model::ModelRegistry::loadModel(
     const std::string& gguf,
-    std::span<std::string> loras,
     ModelLoadProgressCb pcb,
     Model::Params params) {
     std::shared_ptr<llama_model> model = nullptr;
@@ -104,32 +105,19 @@ Model ModelRegistry::loadModel(
         m_models.emplace(gguf, model);
     }
 
-    ac::llama::Model acModel(model, params);
-
-    for(auto& loraPath: loras) {
-        auto lora = loadLora(&acModel, loraPath);
-        acModel.addLora(lora);
-    }
-
-    return acModel;
+    return model;
 }
 
-std::shared_ptr<LoraAdapter> ModelRegistry::loadLora(Model* model, const std::string& loraPath) {
+std::shared_ptr<LoraAdapter> Model::ModelRegistry::loadLora(Model* model, const std::string& loraPath) {
     auto loadedLorasIt = m_loras.find(model->lmodel());
     if (loadedLorasIt == m_loras.end()) {
         m_loras[model->lmodel()] = {};
     }
 
     auto loadedLoras = m_loras[model->lmodel()];
-    bool shouldCleanupLoras = false;
 
     for (auto& lora : loadedLoras) {
-        if (lora.expired()) {
-            shouldCleanupLoras = true;
-            continue;
-        }
-
-        if (lora.lock()->path() == loraPath) {
+        if (!lora.expired() && lora.lock()->path() == loraPath) {
             return lora.lock();
             break;
         }
@@ -137,13 +125,6 @@ std::shared_ptr<LoraAdapter> ModelRegistry::loadLora(Model* model, const std::st
 
     std::shared_ptr<LoraAdapter> lora = std::make_shared<LoraAdapter>(*model, loraPath);
     loadedLoras.push_back(lora);
-
-    if (shouldCleanupLoras) {
-        loadedLoras.erase(std::remove_if(loadedLoras.begin(), loadedLoras.end(),
-            [](const std::weak_ptr<LoraAdapter>& lora) {
-                    return lora.expired();
-            }), loadedLoras.end());
-    }
 
     return lora;
 }

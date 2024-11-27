@@ -27,8 +27,7 @@ public:
         bool prefixInputsWithBos = false; // add bos token to interactive inputs (#13)
     };
 
-    // Model(const char* pathToGguf, ModelLoadProgressCb loadProgressCb, Params params);
-    Model(std::shared_ptr<llama_model> lmodel, Params params);
+    Model(const char* pathToGguf, std::vector<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params);
     ~Model();
 
     const Params& params() const noexcept { return m_params; }
@@ -57,6 +56,21 @@ private:
     std::vector<std::shared_ptr<LoraAdapter>> m_loras;
 
     Vocab m_vocab{*this};
+
+    class ModelRegistry {
+    public:
+        std::shared_ptr<llama_model> loadModel(
+            const std::string& gguf,
+            ModelLoadProgressCb pcb,
+            Model::Params params);
+
+        std::shared_ptr<LoraAdapter> loadLora(Model* model, const std::string& loraPath);
+    private:
+        std::unordered_map<std::string, std::weak_ptr<llama_model>> m_models;
+        std::unordered_map<llama_model*, std::vector<std::weak_ptr<LoraAdapter>>> m_loras;
+    };
+
+    static ModelRegistry s_modelRegistry;
 };
 
 class AC_LLAMA_EXPORT LoraAdapter {
@@ -71,21 +85,6 @@ private:
     astl::c_unique_ptr<llama_lora_adapter> m_adapter;
     float m_scale;
     std::string m_path;
-};
-
-class AC_LLAMA_EXPORT ModelRegistry {
-public:
-    Model loadModel(
-        const std::string& gguf,
-        std::span<std::string> loras,
-        ModelLoadProgressCb pcb,
-         Model::Params params);
-
-    std::shared_ptr<LoraAdapter> loadLora(Model* model, const std::string& loraPath);
-
-private:
-    std::unordered_map<std::string, std::weak_ptr<llama_model>> m_models;
-    std::unordered_map<llama_model*, std::vector<std::weak_ptr<LoraAdapter>>> m_loras;
 };
 
 } // namespace ac::llama
