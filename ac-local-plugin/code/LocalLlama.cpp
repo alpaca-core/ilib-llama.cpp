@@ -247,16 +247,15 @@ public:
         static Info i = {
             .name = "ac llama.cpp",
             .vendor = "Alpaca Core",
-            .inferenceSchemaTypes = {"llama"},
         };
         return i;
     }
 
-    virtual bool canLoadModel(const ModelDesc& desc, const Dict&) const noexcept override {
-        return desc.inferenceType == "llama";
+    virtual bool canLoadModel(const ModelAssetDesc& desc, const Dict&) const noexcept override {
+        return desc.type == "llama.cpp gguf";
     }
 
-    virtual ModelPtr loadModel(ModelDesc desc, Dict, ProgressCb progressCb) override {
+    virtual ModelPtr loadModel(ModelAssetDesc desc, Dict, ProgressCb progressCb) override {
         if (desc.assets.size() != 1) throw_ex{} << "llama: expected exactly one local asset";
         auto& gguf = desc.assets.front().path;
         llama::Model::Params modelParams;

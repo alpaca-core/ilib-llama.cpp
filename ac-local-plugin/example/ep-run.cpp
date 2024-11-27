@@ -3,7 +3,7 @@
 //
 #include <ac/local/Model.hpp>
 #include <ac/local/Instance.hpp>
-#include <ac/local/ModelLoaderRegistry.hpp>
+#include <ac/local/ModelAssetDesc.hpp>
 #include <ac/local/Lib.hpp>
 
 #include <ac/jalog/Instance.hpp>
@@ -20,12 +20,13 @@ int main() try {
 
     ac::local::Lib::loadPlugin(ACLP_llama_PLUGIN_FILE);
 
-    auto model = ac::local::Lib::modelLoaderRegistry().createModel(
+    auto model = ac::local::Lib::loadModel(
         {
-            .inferenceType = "llama",
+            .type = "llama.cpp gguf",
             .assets = {
                 {.path = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"}
-            }
+            },
+            .name = "gpt2 117m"
         },
         {},
         [](std::string_view tag, float) {
