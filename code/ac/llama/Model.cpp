@@ -33,14 +33,19 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 }
 } // namespace
 
-Model::Model(const char* pathToGguf, ModelLoadProgressCb loadProgressCb, Params params)
+// Model::Model(const char* pathToGguf, ModelLoadProgressCb loadProgressCb, Params params)
+//     : m_params(astl::move(params))
+//     , m_lmodel(llama_load_model_from_file(pathToGguf, llamaFromModelParams(m_params, loadProgressCb)), llama_free_model)
+// {
+//     if (!m_lmodel) {
+//         throw std::runtime_error("Failed to load model");
+//     }
+// }
+
+Model::Model(std::shared_ptr<llama_model> lmodel, Params params)
     : m_params(astl::move(params))
-    , m_lmodel(llama_load_model_from_file(pathToGguf, llamaFromModelParams(m_params, loadProgressCb)), llama_free_model)
-{
-    if (!m_lmodel) {
-        throw std::runtime_error("Failed to load model");
-    }
-}
+    , m_lmodel(astl::move(lmodel))
+{}
 
 Model::~Model() = default;
 
@@ -72,42 +77,75 @@ std::string Model::getChatTemplateId() const {
     return std::string(tplBuf.get(), len);
 }
 
+LoraAdapter::LoraAdapter(Model& model, std::string path, float scale)
+    : m_adapter(llama_lora_adapter_init(model.lmodel(), path.c_str()), llama_lora_adapter_free)
+    , m_scale(scale)
+    , m_path(std::move(path))
+{
+    if (!m_adapter) {
+        throw std::runtime_error("Failed to initialize LORA adapter from " + m_path);
+    }
+}
 
-std::shared_ptr<Model> ModelRegistry::loadModel(
+Model ModelRegistry::loadModel(
     const std::string& gguf,
     std::span<std::string> loras,
     ModelLoadProgressCb pcb,
     Model::Params params) {
-        // TOOD: key must include params
-        auto it = m_models.find(gguf);
-        if (it != m_models.end() && !it->second.expired()) {
-            return it->second.lock();
-        }
-
-        //astl::c_unique_ptr<llama_model> model(llama_load_model_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_free_model)
-
-        std::shared_ptr<Model> model = std::make_shared<Model>(gguf.c_str(), pcb, params);
-
-        std::vector<llama_lora_adapter*> adaptersToApply;
-        for(auto& loraPath: loras) {
-            auto loraIt = m_loras.find(loraPath);
-            if (m_loras.find(loraPath) != m_loras.end()) {
-                adaptersToApply.push_back(loraIt->second);
-                continue;
-            }
-
-            llama_lora_adapter* adapter = llama_lora_adapter_init(model->lmodel(), loraPath.c_str());
-            if (!adapter) {
-                throw std::runtime_error("Failed to initialize LORA adapter from " + loraPath);
-            }
-
-            m_loras.emplace(loraPath, adapter);
-            adaptersToApply.push_back(adapter);
-        }
-
-        m_models.emplace(gguf, model);
-
-        return model;
+    std::shared_ptr<llama_model> model = nullptr;
+    // TOOD: key must include params
+    auto it = m_models.find(gguf);
+    if (it != m_models.end() && !it->second.expired()) {
+        model = it->second.lock();
     }
+
+    if (!model) {
+        model = std::shared_ptr<llama_model>(llama_load_model_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_free_model);
+        m_models.emplace(gguf, model);
+    }
+
+    ac::llama::Model acModel(model, params);
+
+    for(auto& loraPath: loras) {
+        auto lora = loadLora(&acModel, loraPath);
+        acModel.addLora(lora);
+    }
+
+    return acModel;
+}
+
+std::shared_ptr<LoraAdapter> ModelRegistry::loadLora(Model* model, const std::string& loraPath) {
+    auto loadedLorasIt = m_loras.find(model->lmodel());
+    if (loadedLorasIt == m_loras.end()) {
+        m_loras[model->lmodel()] = {};
+    }
+
+    auto loadedLoras = m_loras[model->lmodel()];
+    bool shouldCleanupLoras = false;
+
+    for (auto& lora : loadedLoras) {
+        if (lora.expired()) {
+            shouldCleanupLoras = true;
+            continue;
+        }
+
+        if (lora.lock()->path() == loraPath) {
+            return lora.lock();
+            break;
+        }
+    }
+
+    std::shared_ptr<LoraAdapter> lora = std::make_shared<LoraAdapter>(*model, loraPath);
+    loadedLoras.push_back(lora);
+
+    if (shouldCleanupLoras) {
+        loadedLoras.erase(std::remove_if(loadedLoras.begin(), loadedLoras.end(),
+            [](const std::weak_ptr<LoraAdapter>& lora) {
+                    return lora.expired();
+            }), loadedLoras.end());
+    }
+
+    return lora;
+}
 
 } // namespace ac::llama

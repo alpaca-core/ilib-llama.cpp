@@ -25,6 +25,8 @@
 
 namespace ac::local {
 
+llama::ModelRegistry g_modelRegistry;
+
 namespace {
 class ChatSession {
     llama::Session m_session;
@@ -227,7 +229,7 @@ public:
     using Schema = ac::local::schema::Llama;
 
     LlamaModel(const std::string& gguf, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
-        : m_model(std::make_shared<llama::Model>(gguf.c_str(), astl::move(pcb), astl::move(params)))
+        : m_model(std::make_shared<llama::Model>(g_modelRegistry.loadModel(gguf.c_str(), {}, astl::move(pcb), astl::move(params))))
     {}
 
     virtual std::unique_ptr<Instance> createInstance(std::string_view type, Dict params) override {

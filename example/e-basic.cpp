@@ -28,7 +28,9 @@ int main() try {
     ac::llama::initLibrary();
 
     // load model
-    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
+    // std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
+    std::string loraGguf = AC_TEST_DATA_LLAMA_DIR "/Llama-3-Instruct-abliteration-LoRA-8B-f16.gguf";
+    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR  "/../../../Lexi-Llama-3-8B-Uncensored_Q8_0.gguf";
     ac::llama::Model::Params modelParams;
     auto modelLoadProgressCallback = [](float progress) {
         const int barWidth = 50;
@@ -43,12 +45,19 @@ int main() try {
         }
         return true;
     };
-    ac::llama::Model model(modelGguf.c_str(), modelLoadProgressCallback, modelParams);
+
+    ac::llama::ModelRegistry modelRegistry;
+    std::vector<std::string> loras = { loraGguf };
+    ac::llama::Model model = modelRegistry.loadModel(modelGguf, loras, modelLoadProgressCallback, modelParams);
+    ac::llama::Model model2 = modelRegistry.loadModel(modelGguf, loras, modelLoadProgressCallback, modelParams);
+
+
+    // ac::llama::Model model(modelGguf.c_str(), modelLoadProgressCallback, modelParams);
 
     // create inference instance
     ac::llama::Instance instance(model, {});
 
-    std::string prompt = "The first person to";
+    std::string prompt = "If I'm going to kill someone";
     std::cout << "Prompt: " << prompt << "\n";
 
     // start session

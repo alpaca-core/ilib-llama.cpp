@@ -48,6 +48,8 @@ void printModelLoadProgress(float progress) {
     }
 };
 
+ac::llama::ModelRegistry g_modelRegistry;
+
 // unloadable model
 class UModel {
 public:
@@ -61,7 +63,7 @@ public:
     class State {
     public:
         State(const std::string& ggufPath, const ac::llama::Model::Params& modelParams)
-            : m_model(ggufPath.c_str(), printModelLoadProgress, modelParams)
+            : m_model(g_modelRegistry.loadModel(ggufPath.c_str(), {}, printModelLoadProgress, modelParams))
         {}
 
         class Instance {
