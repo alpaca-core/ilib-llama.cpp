@@ -14,8 +14,6 @@ struct GlobalFixture {
     GlobalFixture() {
         ac::llama::initLibrary();
     }
-
-    ac::llama::ModelRegistry modelRegistry;
 };
 
 GlobalFixture globalFixture;
@@ -23,8 +21,7 @@ GlobalFixture globalFixture;
 const char* Model_117m_q6_k = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
 
 TEST_CASE("vocab only") {
-    ac::llama::ModelRegistry mRegistry;
-    ac::llama::Model model = mRegistry.loadModel(Model_117m_q6_k, {}, {}, { .vocabOnly = true });
+    ac::llama::Model model(Model_117m_q6_k, {}, {}, { .vocabOnly = true });
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
@@ -42,8 +39,7 @@ TEST_CASE("vocab only") {
 }
 
 TEST_CASE("inference") {
-    ac::llama::ModelRegistry mRegistry;
-    ac::llama::Model model = mRegistry.loadModel(Model_117m_q6_k, {}, {}, {});
+    ac::llama::Model model(Model_117m_q6_k, {}, {}, {});
     CHECK(!!model.lmodel());
 
     auto& params = model.params();

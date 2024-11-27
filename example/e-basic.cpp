@@ -46,10 +46,9 @@ int main() try {
         return true;
     };
 
-    ac::llama::ModelRegistry modelRegistry;
     std::vector<std::string> loras = { loraGguf };
-    ac::llama::Model model = modelRegistry.loadModel(modelGguf, loras, modelLoadProgressCallback, modelParams);
-    ac::llama::Model model2 = modelRegistry.loadModel(modelGguf, loras, modelLoadProgressCallback, modelParams);
+    ac::llama::Model model(modelGguf.c_str(), loras, modelLoadProgressCallback, modelParams);
+    ac::llama::Model model2(modelGguf.c_str(), loras, modelLoadProgressCallback, modelParams);
 
 
     // ac::llama::Model model(modelGguf.c_str(), modelLoadProgressCallback, modelParams);
