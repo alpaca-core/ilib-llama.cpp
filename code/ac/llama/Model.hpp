@@ -15,6 +15,7 @@ struct llama_lora_adapter;
 
 namespace ac::llama {
 class Job;
+class LoraAdapter;
 
 using ModelLoadProgressCb = astl::ufunction<void(float)>;
 
@@ -26,7 +27,8 @@ public:
         bool prefixInputsWithBos = false; // add bos token to interactive inputs (#13)
     };
 
-    Model(const char* pathToGguf, ModelLoadProgressCb loadProgressCb, Params params);
+    // Model(const char* pathToGguf, ModelLoadProgressCb loadProgressCb, Params params);
+    Model(std::shared_ptr<llama_model> lmodel, Params params);
     ~Model();
 
     const Params& params() const noexcept { return m_params; }
@@ -42,32 +44,48 @@ public:
     llama_model* lmodel() noexcept { return m_lmodel.get(); }
     const llama_model* lmodel() const noexcept { return m_lmodel.get(); }
 
-    std::span<llama_lora_adapter*> loras() noexcept { return std::span<llama_lora_adapter*>(m_loras.data(), m_loras.size()); }
+    void addLora(std::shared_ptr<LoraAdapter> lora) noexcept { m_loras.push_back(lora); }
+    void removeLora(std::shared_ptr<LoraAdapter> lora) noexcept {
+        m_loras.erase(std::remove(m_loras.begin(), m_loras.end(), lora), m_loras.end());
+    }
+    std::span<std::shared_ptr<LoraAdapter>> loras() noexcept { return std::span<std::shared_ptr<LoraAdapter>>(m_loras); }
 
     const Vocab& vocab() const noexcept { return m_vocab; }
 private:
     const Params m_params;
-    astl::c_unique_ptr<llama_model> m_lmodel;
-    std::vector<llama_lora_adapter*> m_loras;
+    std::shared_ptr<llama_model> m_lmodel;
+    std::vector<std::shared_ptr<LoraAdapter>> m_loras;
 
     Vocab m_vocab{*this};
 };
 
-// Add model to the registry and return the model
-// - add loras to the registry too, so if other models need them, they can be reused
-// - pass the loras to the model, so when we create instance we can pass them to the instance
+class AC_LLAMA_EXPORT LoraAdapter {
+public:
+    LoraAdapter(Model& model, std::string path, float scale = 1.0f);
+
+    llama_lora_adapter* adapter() const noexcept { return m_adapter.get(); }
+    float scale() const noexcept { return m_scale; }
+    std::string_view path() const noexcept { return m_path; }
+
+private:
+    astl::c_unique_ptr<llama_lora_adapter> m_adapter;
+    float m_scale;
+    std::string m_path;
+};
+
 class AC_LLAMA_EXPORT ModelRegistry {
 public:
-    std::shared_ptr<Model> loadModel(
+    Model loadModel(
         const std::string& gguf,
         std::span<std::string> loras,
         ModelLoadProgressCb pcb,
          Model::Params params);
+
+    std::shared_ptr<LoraAdapter> loadLora(Model* model, const std::string& loraPath);
+
 private:
-
-
-    std::unordered_map<std::string, std::weak_ptr<Model>> m_models;
-    std::unordered_map<std::string, llama_lora_adapter*> m_loras;
+    std::unordered_map<std::string, std::weak_ptr<llama_model>> m_models;
+    std::unordered_map<llama_model*, std::vector<std::weak_ptr<LoraAdapter>>> m_loras;
 };
 
 } // namespace ac::llama
