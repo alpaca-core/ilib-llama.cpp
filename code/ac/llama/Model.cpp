@@ -1,4 +1,4 @@
-// Copyright (c) Alpaca Core
+    // Copyright (c) Alpaca Core
 // SPDX-License-Identifier: MIT
 //
 #include "Model.hpp"
@@ -71,5 +71,43 @@ std::string Model::getChatTemplateId() const {
 
     return std::string(tplBuf.get(), len);
 }
+
+
+std::shared_ptr<Model> ModelRegistry::loadModel(
+    const std::string& gguf,
+    std::span<std::string> loras,
+    ModelLoadProgressCb pcb,
+    Model::Params params) {
+        // TOOD: key must include params
+        auto it = m_models.find(gguf);
+        if (it != m_models.end() && !it->second.expired()) {
+            return it->second.lock();
+        }
+
+        //astl::c_unique_ptr<llama_model> model(llama_load_model_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_free_model)
+
+        std::shared_ptr<Model> model = std::make_shared<Model>(gguf.c_str(), pcb, params);
+
+        std::vector<llama_lora_adapter*> adaptersToApply;
+        for(auto& loraPath: loras) {
+            auto loraIt = m_loras.find(loraPath);
+            if (m_loras.find(loraPath) != m_loras.end()) {
+                adaptersToApply.push_back(loraIt->second);
+                continue;
+            }
+
+            llama_lora_adapter* adapter = llama_lora_adapter_init(model->lmodel(), loraPath.c_str());
+            if (!adapter) {
+                throw std::runtime_error("Failed to initialize LORA adapter from " + loraPath);
+            }
+
+            m_loras.emplace(loraPath, adapter);
+            adaptersToApply.push_back(adapter);
+        }
+
+        m_models.emplace(gguf, model);
+
+        return model;
+    }
 
 } // namespace ac::llama
