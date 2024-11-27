@@ -47,19 +47,10 @@ Instance::Instance(Model& model, InitParams params)
         LLAMA_LOG(Warning, "Instance requested context length ", ctxLen, " is greater than the model's training context length ", ctxTrain);
     }
 
-    for (auto& loraConfig : params.loraConfigs) {
-        if (loraConfig.scale == 0.0f) {
-            continue;
-        }
-
-        llama_lora_adapter* adapter = llama_lora_adapter_init(m_model.lmodel(), loraConfig.path.c_str());
-        if (!adapter) {
-            LLAMA_LOG(Error, "Failed to initialize LORA adapter from ", loraConfig.path);
-            continue;
-        }
-
-        if (llama_lora_adapter_set(m_lctx.get(), adapter, loraConfig.scale) < 0) {
-            LLAMA_LOG(Error, "Failed to set LORA adapter from ", loraConfig.path);
+    for (auto& lora: model.loras())
+    {
+        if (llama_lora_adapter_set(m_lctx.get(), lora->adapter(), lora->scale()) < 0) {
+            LLAMA_LOG(Error, "Failed to set LORA adapter from ", lora->path());
         }
     }
 }

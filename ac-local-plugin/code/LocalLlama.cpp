@@ -26,6 +26,8 @@
 
 namespace ac::local {
 
+llama::ModelRegistry g_modelRegistry;
+
 namespace {
 class ChatSession {
     llama::Session m_session;
@@ -236,7 +238,7 @@ class LlamaModel final : public Model {
 public:
 
     LlamaModel(const std::string& gguf, std::vector<llama::ControlVector::LoadInfo>& ctrlVectors, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
-        : m_model(std::make_shared<llama::Model>(gguf.c_str(), astl::move(pcb), astl::move(params)))
+        : m_model(std::make_shared<llama::Model>(g_modelRegistry.loadModel(gguf.c_str(), {}, astl::move(pcb), astl::move(params))))
         , m_ctrlVectors(astl::move(ctrlVectors))
     {}
 
