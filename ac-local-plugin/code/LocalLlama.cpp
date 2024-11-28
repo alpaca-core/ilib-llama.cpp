@@ -235,8 +235,8 @@ class LlamaModel final : public Model {
     }
 public:
 
-    LlamaModel(const std::string& gguf, std::vector<llama::ControlVector::LoadInfo>& ctrlVectors, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
-        : m_model(std::make_shared<llama::Model>(llama::Model(gguf.c_str(), {}, astl::move(pcb), astl::move(params))))
+    LlamaModel(const std::string& gguf, std::span<std::string> loras, std::vector<llama::ControlVector::LoadInfo>& ctrlVectors, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
+        : m_model(std::make_shared<llama::Model>(llama::Model(gguf.c_str(), loras, astl::move(pcb), astl::move(params))))
         , m_ctrlVectors(astl::move(ctrlVectors))
     {}
 
@@ -270,15 +270,19 @@ public:
         auto& gguf = desc.assets.front().path;
 
         std::vector<llama::ControlVector::LoadInfo> ctrlVectors;
+        std::vector<std::string> loras;
         for (auto& asset : desc.assets) {
             if (asset.tag.find("control_vector:")) {
                 ctrlVectors.push_back({asset.path, 2});
+            }
+            if (asset.tag.find("lora:") != std::string::npos) {
+                loras.push_back(asset.path);
             }
         }
 
         llama::Model::Params modelParams;
         std::string progressTag = "loading " + gguf;
-        return std::make_shared<LlamaModel>(gguf, ctrlVectors, [movecap(progressTag, progressCb)](float p) {
+        return std::make_shared<LlamaModel>(gguf, loras, ctrlVectors, [movecap(progressTag, progressCb)](float p) {
             if (progressCb) {
                 progressCb(progressTag, p);
             }

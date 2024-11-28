@@ -26,7 +26,7 @@ public:
         bool prefixInputsWithBos = false; // add bos token to interactive inputs (#13)
     };
 
-    Model(const char* pathToGguf, std::vector<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params);
+    Model(const char* pathToGguf, std::span<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params);
     ~Model();
 
     const Params& params() const noexcept { return m_params; }
