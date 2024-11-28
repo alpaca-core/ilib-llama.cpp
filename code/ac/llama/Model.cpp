@@ -107,6 +107,10 @@ std::shared_ptr<LoraAdapter> Model::ModelRegistry::loadLora(Model* model, const 
 
     auto loadedLoras = m_loras[model->lmodel()];
 
+    loadedLoras.erase(std::find_if(loadedLoras.begin(), loadedLoras.end(), [&](const auto& lora) {
+        return lora.expired();
+    }), loadedLoras.end());
+
     for (auto& lora : loadedLoras) {
         if (!lora.expired() && lora.lock()->path() == loraPath) {
             return lora.lock();
