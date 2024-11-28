@@ -82,6 +82,12 @@ std::shared_ptr<llama_model> ModelRegistry::loadModel(
     const std::string& gguf,
     ModelLoadProgressCb pcb,
     Model::Params params) {
+
+    // clean up expired models
+    m_models.erase(std::find_if(m_models.begin(), m_models.end(), [&](const auto& m) {
+        return m.second.expired();
+    }), m_models.end());
+
     std::shared_ptr<llama_model> model = nullptr;
     auto key = ModelKey{gguf, params};
     for (auto& m: m_models) {
