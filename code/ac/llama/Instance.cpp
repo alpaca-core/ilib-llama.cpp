@@ -3,6 +3,7 @@
 //
 #include "Instance.hpp"
 #include "Model.hpp"
+#include "LoraAdapter.hpp"
 #include "Logging.hpp"
 #include "Session.hpp"
 #include "ControlVector.hpp"

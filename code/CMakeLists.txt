@@ -34,4 +34,6 @@ target_sources(ac-llama PRIVATE
     ac/llama/IncrementalStringFinder.cpp
     ac/llama/ControlVector.hpp
     ac/llama/ControlVector.cpp
+    ac/llama/LoraAdapter.hpp
+    ac/llama/LoraAdapter.cpp
 )
