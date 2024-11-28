@@ -11,7 +11,6 @@
 #include <vector>
 
 struct llama_model;
-struct llama_lora_adapter;
 
 namespace ac::llama {
 class Job;
@@ -56,21 +55,37 @@ private:
     std::vector<std::shared_ptr<LoraAdapter>> m_loras;
 
     Vocab m_vocab{*this};
+};
 
-    class ModelRegistry {
-    public:
-        std::shared_ptr<llama_model> loadModel(
-            const std::string& gguf,
-            ModelLoadProgressCb pcb,
-            Model::Params params);
-
-        std::shared_ptr<LoraAdapter> loadLora(Model* model, const std::string& loraPath);
-    private:
-        std::unordered_map<std::string, std::weak_ptr<llama_model>> m_models;
-        std::unordered_map<llama_model*, std::vector<std::weak_ptr<LoraAdapter>>> m_loras;
+class ModelRegistry {
+public:
+    static ModelRegistry& getInstance() {
+        static ModelRegistry instance;
+        return instance;
     };
 
-    static ModelRegistry s_modelRegistry;
+    std::shared_ptr<llama_model> loadModel(
+        const std::string& gguf,
+        ModelLoadProgressCb pcb,
+        Model::Params params);
+
+    std::shared_ptr<LoraAdapter> loadLora(Model* model, const std::string& loraPath);
+private:
+
+    struct ModelKey {
+        std::string gguf;
+        Model::Params params;
+
+        bool operator==(const ModelKey& other) const noexcept {
+            return gguf == other.gguf
+                    && params.gpu == other.params.gpu
+                    && params.prefixInputsWithBos == other.params.prefixInputsWithBos
+                    && params.vocabOnly == other.params.vocabOnly;
+        }
+    };
+
+    std::vector<std::pair<ModelKey, std::weak_ptr<llama_model>>> m_models;
+    std::unordered_map<llama_model*, std::vector<std::weak_ptr<LoraAdapter>>> m_loras;
 };
 
 } // namespace ac::llama
