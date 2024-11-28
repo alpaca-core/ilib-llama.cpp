@@ -34,7 +34,7 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 } // namespace
 
 
-Model::Model(const char* pathToGguf, std::vector<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params)
+Model::Model(const char* pathToGguf, std::span<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params)
     : m_params(astl::move(params))
 {
     m_lmodel = ModelRegistry::getInstance().loadModel(pathToGguf, std::move(loadProgressCb), m_params);

@@ -226,8 +226,8 @@ class LlamaModel final : public Model {
 public:
     using Schema = ac::local::schema::Llama;
 
-    LlamaModel(const std::string& gguf, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
-        : m_model(std::make_shared<llama::Model>(llama::Model(gguf.c_str(), {}, astl::move(pcb), astl::move(params))))
+    LlamaModel(const std::string& gguf, std::span<std::string> loras, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
+        : m_model(std::make_shared<llama::Model>(llama::Model(gguf.c_str(), loras, astl::move(pcb), astl::move(params))))
     {}
 
     virtual std::unique_ptr<Instance> createInstance(std::string_view type, Dict params) override {
@@ -258,9 +258,17 @@ public:
     virtual ModelPtr loadModel(ModelAssetDesc desc, Dict, ProgressCb progressCb) override {
         if (desc.assets.size() != 1) throw_ex{} << "llama: expected exactly one local asset";
         auto& gguf = desc.assets.front().path;
+
+        std::vector<std::string> loras;
+        for (auto& asset : desc.assets) {
+            if (asset.path.find("lora:") != std::string::npos) {
+                loras.push_back(asset.path);
+            }
+        }
+
         llama::Model::Params modelParams;
         std::string progressTag = "loading " + gguf;
-        return std::make_shared<LlamaModel>(gguf, [movecap(progressTag, progressCb)](float p) {
+        return std::make_shared<LlamaModel>(gguf, loras, [movecap(progressTag, progressCb)](float p) {
             if (progressCb) {
                 progressCb(progressTag, p);
             }
