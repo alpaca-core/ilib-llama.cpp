@@ -8,7 +8,6 @@
 #include <stdexcept>
 
 namespace ac::llama {
-
 namespace {
 llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadProgressCb& loadProgressCb)
 {
@@ -34,18 +33,17 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 }
 } // namespace
 
-Model::ModelRegistry Model::s_modelRegistry;
 
 Model::Model(const char* pathToGguf, std::vector<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params)
     : m_params(astl::move(params))
 {
-    m_lmodel = s_modelRegistry.loadModel(pathToGguf, std::move(loadProgressCb), m_params);
+    m_lmodel = ModelRegistry::getInstance().loadModel(pathToGguf, std::move(loadProgressCb), m_params);
     if (!m_lmodel) {
         throw std::runtime_error("Failed to load model");
     }
 
     for(auto& loraPath: loras) {
-        auto lora = s_modelRegistry.loadLora(this, loraPath);
+        auto lora = ModelRegistry::getInstance().loadLora(this, loraPath);
         m_loras.push_back(lora);
     }
 }
@@ -80,26 +78,27 @@ std::string Model::getChatTemplateId() const {
     return std::string(tplBuf.get(), len);
 }
 
-std::shared_ptr<llama_model> Model::ModelRegistry::loadModel(
+std::shared_ptr<llama_model> ModelRegistry::loadModel(
     const std::string& gguf,
     ModelLoadProgressCb pcb,
     Model::Params params) {
     std::shared_ptr<llama_model> model = nullptr;
-    // TOOD: key must include params
-    auto it = m_models.find(gguf);
-    if (it != m_models.end() && !it->second.expired()) {
-        model = it->second.lock();
+    auto key = ModelKey{gguf, params};
+    for (auto& m: m_models) {
+        if (m.first == key) {
+            return m.second.lock();
+        }
     }
 
     if (!model) {
         model = std::shared_ptr<llama_model>(llama_load_model_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_free_model);
-        m_models.emplace(gguf, model);
+        m_models.push_back({key, model});
     }
 
     return model;
 }
 
-std::shared_ptr<LoraAdapter> Model::ModelRegistry::loadLora(Model* model, const std::string& loraPath) {
+std::shared_ptr<LoraAdapter> ModelRegistry::loadLora(Model* model, const std::string& loraPath) {
     auto loadedLorasIt = m_loras.find(model->lmodel());
     if (loadedLorasIt == m_loras.end()) {
         m_loras[model->lmodel()] = {};
@@ -123,5 +122,6 @@ std::shared_ptr<LoraAdapter> Model::ModelRegistry::loadLora(Model* model, const 
 
     return lora;
 }
+
 
 } // namespace ac::llama
