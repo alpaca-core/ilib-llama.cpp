@@ -1,13 +1,13 @@
-// Copyright (c) Alpaca Core
+    // Copyright (c) Alpaca Core
 // SPDX-License-Identifier: MIT
 //
 #include "Model.hpp"
+#include "LoraAdapter.hpp"
 #include <llama.h>
 #include <astl/move.hpp>
 #include <stdexcept>
 
 namespace ac::llama {
-
 namespace {
 llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadProgressCb& loadProgressCb)
 {
@@ -33,12 +33,18 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 }
 } // namespace
 
-Model::Model(const char* pathToGguf, ModelLoadProgressCb loadProgressCb, Params params)
+
+Model::Model(const char* pathToGguf, std::span<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params)
     : m_params(astl::move(params))
-    , m_lmodel(llama_load_model_from_file(pathToGguf, llamaFromModelParams(m_params, loadProgressCb)), llama_free_model)
 {
+    m_lmodel = ModelRegistry::getInstance().loadModel(pathToGguf, std::move(loadProgressCb), m_params);
     if (!m_lmodel) {
         throw std::runtime_error("Failed to load model");
+    }
+
+    for(auto& loraPath: loras) {
+        auto lora = ModelRegistry::getInstance().loadLora(this, loraPath);
+        m_loras.push_back(lora);
     }
 }
 
@@ -71,5 +77,57 @@ std::string Model::getChatTemplateId() const {
 
     return std::string(tplBuf.get(), len);
 }
+
+std::shared_ptr<llama_model> ModelRegistry::loadModel(
+    const std::string& gguf,
+    ModelLoadProgressCb pcb,
+    Model::Params params) {
+
+    // clean up expired models
+    m_models.erase(std::find_if(m_models.begin(), m_models.end(), [&](const auto& m) {
+        return m.second.expired();
+    }), m_models.end());
+
+    std::shared_ptr<llama_model> model = nullptr;
+    auto key = ModelKey{gguf, params};
+    for (auto& m: m_models) {
+        if (m.first == key) {
+            return m.second.lock();
+        }
+    }
+
+    if (!model) {
+        model = std::shared_ptr<llama_model>(llama_load_model_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_free_model);
+        m_models.push_back({key, model});
+    }
+
+    return model;
+}
+
+std::shared_ptr<LoraAdapter> ModelRegistry::loadLora(Model* model, const std::string& loraPath) {
+    auto loadedLorasIt = m_loras.find(model->lmodel());
+    if (loadedLorasIt == m_loras.end()) {
+        m_loras[model->lmodel()] = {};
+    }
+
+    auto loadedLoras = m_loras[model->lmodel()];
+
+    loadedLoras.erase(std::find_if(loadedLoras.begin(), loadedLoras.end(), [&](const auto& lora) {
+        return lora.expired();
+    }), loadedLoras.end());
+
+    for (auto& lora : loadedLoras) {
+        if (!lora.expired() && lora.lock()->path() == loraPath) {
+            return lora.lock();
+            break;
+        }
+    }
+
+    std::shared_ptr<LoraAdapter> lora = std::make_shared<LoraAdapter>(*model, loraPath);
+    loadedLoras.push_back(lora);
+
+    return lora;
+}
+
 
 } // namespace ac::llama

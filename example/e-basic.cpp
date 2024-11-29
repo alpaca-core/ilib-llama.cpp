@@ -43,7 +43,7 @@ int main() try {
         }
         return true;
     };
-    ac::llama::Model model(modelGguf.c_str(), modelLoadProgressCallback, modelParams);
+    ac::llama::Model model(modelGguf.c_str(), {}, modelLoadProgressCallback, modelParams);
 
     // create inference instance
     ac::llama::Instance instance(model, {});

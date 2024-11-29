@@ -3,6 +3,7 @@
 //
 #include "Instance.hpp"
 #include "Model.hpp"
+#include "LoraAdapter.hpp"
 #include "Logging.hpp"
 #include "Session.hpp"
 #include <llama.h>
@@ -16,12 +17,12 @@
 namespace ac::llama {
 
 namespace {
-llama_context_params llamaFromInstanceInitParams(Model& model, const Instance::InitParams& params) {
+llama_context_params llamaFromInstanceInitParams(const Instance::InitParams& params) {
     llama_context_params llamaParams = llama_context_default_params();
     llamaParams.n_ctx = params.ctxSize;
     llamaParams.n_batch = params.batchSize;
     llamaParams.n_ubatch = params.ubatchSize;
-    llamaParams.flash_attn = model.params().gpu;
+    llamaParams.flash_attn = params.flashAttn;
     return llamaParams;
 }
 } // namespace
@@ -29,7 +30,7 @@ llama_context_params llamaFromInstanceInitParams(Model& model, const Instance::I
 Instance::Instance(Model& model, InitParams params)
     : m_model(model)
     , m_sampler(model, {})
-    , m_lctx(llama_new_context_with_model(model.lmodel(), llamaFromInstanceInitParams(model, params)), llama_free)
+    , m_lctx(llama_new_context_with_model(model.lmodel(), llamaFromInstanceInitParams(params)), llama_free)
 {
     if (!m_lctx) {
         throw_ex{} << "Failed to create llama context";
@@ -40,6 +41,13 @@ Instance::Instance(Model& model, InitParams params)
     const auto ctxTrain = model.trainCtxLength();
     if (ctxLen > ctxTrain) {
         LLAMA_LOG(Warning, "Instance requested context length ", ctxLen, " is greater than the model's training context length ", ctxTrain);
+    }
+
+    for (auto& lora: model.loras())
+    {
+        if (llama_lora_adapter_set(m_lctx.get(), lora->adapter(), lora->scale()) < 0) {
+            LLAMA_LOG(Error, "Failed to set LORA adapter from ", lora->path());
+        }
     }
 }
 

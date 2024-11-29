@@ -7,12 +7,15 @@
 #include <astl/mem_ext.hpp>
 #include <astl/ufunction.hpp>
 #include <string>
+#include <span>
+#include <vector>
 
 struct llama_model;
-//struct llama_model_params;
 
 namespace ac::llama {
 class Job;
+class LoraAdapter;
+
 using ModelLoadProgressCb = astl::ufunction<void(float)>;
 
 class AC_LLAMA_EXPORT Model {
@@ -23,7 +26,7 @@ public:
         bool prefixInputsWithBos = false; // add bos token to interactive inputs (#13)
     };
 
-    Model(const char* pathToGguf, ModelLoadProgressCb loadProgressCb, Params params);
+    Model(const char* pathToGguf, std::span<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params);
     ~Model();
 
     const Params& params() const noexcept { return m_params; }
@@ -39,11 +42,50 @@ public:
     llama_model* lmodel() noexcept { return m_lmodel.get(); }
     const llama_model* lmodel() const noexcept { return m_lmodel.get(); }
 
+    void addLora(std::shared_ptr<LoraAdapter> lora) noexcept { m_loras.push_back(lora); }
+    void removeLora(std::shared_ptr<LoraAdapter> lora) noexcept {
+        m_loras.erase(std::remove(m_loras.begin(), m_loras.end(), lora), m_loras.end());
+    }
+    std::span<std::shared_ptr<LoraAdapter>> loras() noexcept { return std::span<std::shared_ptr<LoraAdapter>>(m_loras); }
+
     const Vocab& vocab() const noexcept { return m_vocab; }
 private:
     const Params m_params;
-    astl::c_unique_ptr<llama_model> m_lmodel;
+    std::shared_ptr<llama_model> m_lmodel;
+    std::vector<std::shared_ptr<LoraAdapter>> m_loras;
 
     Vocab m_vocab{*this};
 };
+
+class ModelRegistry {
+public:
+    static ModelRegistry& getInstance() {
+        static ModelRegistry instance;
+        return instance;
+    };
+
+    std::shared_ptr<llama_model> loadModel(
+        const std::string& gguf,
+        ModelLoadProgressCb pcb,
+        Model::Params params);
+
+    std::shared_ptr<LoraAdapter> loadLora(Model* model, const std::string& loraPath);
+private:
+
+    struct ModelKey {
+        std::string gguf;
+        Model::Params params;
+
+        bool operator==(const ModelKey& other) const noexcept {
+            return gguf == other.gguf
+                    && params.gpu == other.params.gpu
+                    && params.prefixInputsWithBos == other.params.prefixInputsWithBos
+                    && params.vocabOnly == other.params.vocabOnly;
+        }
+    };
+
+    std::vector<std::pair<ModelKey, std::weak_ptr<llama_model>>> m_models;
+    std::unordered_map<llama_model*, std::vector<std::weak_ptr<LoraAdapter>>> m_loras;
+};
+
 } // namespace ac::llama
