@@ -31,34 +31,6 @@ llama_context_params llamaFromInstanceInitParams(Model& model, const Instance::I
 }
 } // namespace
 
-Instance::Instance(Model& model, const ControlVector& ctrlVector, InitParams params)
-    : m_model(model)
-    , m_sampler(model, {})
-    , m_lctx(llama_new_context_with_model(model.lmodel(), llamaFromInstanceInitParams(model, params)), llama_free)
-{
-    if (!m_lctx) {
-        throw_ex{} << "Failed to create llama context";
-    }
-    assert(model.lmodel() == llama_get_model(m_lctx.get()));
-
-    const auto ctxLen = llama_n_ctx(m_lctx.get());
-    const auto ctxTrain = model.trainCtxLength();
-    if (ctxLen > ctxTrain) {
-        LLAMA_LOG(Warning, "Instance requested context length ", ctxLen, " is greater than the model's training context length ", ctxTrain);
-    }
-
-    int err = llama_control_vector_apply(m_lctx.get(),
-                ctrlVector.data.data(),
-                ctrlVector.data.size(),
-                ctrlVector.nEmbd,
-                ctrlVector.controlVectorLayerStart,
-                ctrlVector.controlVectorLayerEnd);
-
-    if (err) {
-        throw_ex{} << "Failed to apply control vectors!";
-    }
-}
-
 Instance::Instance(Model& model, InitParams params)
     : m_model(model)
     , m_sampler(model, {})
@@ -86,6 +58,19 @@ llama_batch makeInputBatch(std::span<const Token> tokens) {
     auto nonConstTokens = const_cast<Token*>(tokens.data());
     return llama_batch_get_one(nonConstTokens, int32_t(tokens.size()));
 }
+}
+
+void Instance::addControlVector(const ControlVector& ctrlVector) {
+    int err = llama_control_vector_apply(m_lctx.get(),
+            ctrlVector.data.data(),
+            ctrlVector.data.size(),
+            ctrlVector.nEmbd,
+            ctrlVector.controlVectorLayerStart,
+            ctrlVector.controlVectorLayerEnd);
+
+    if (err) {
+        throw_ex{} << "Failed to apply control vectors!";
+    }
 }
 
 void Instance::warmup() {
