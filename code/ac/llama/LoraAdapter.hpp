@@ -17,7 +17,7 @@ public:
 
     llama_lora_adapter* adapter() const noexcept { return m_adapter.get(); }
     float scale() const noexcept { return m_scale; }
-    std::string_view path() const noexcept { return m_path; }
+    const std::string& path() const noexcept { return m_path; }
 
 private:
     astl::c_unique_ptr<llama_lora_adapter> m_adapter;
