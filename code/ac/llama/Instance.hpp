@@ -12,6 +12,7 @@ namespace ac::llama {
 class Model;
 class Session;
 class StringSession;
+class ControlVector;
 
 class AC_LLAMA_EXPORT Instance {
 public:
@@ -21,6 +22,7 @@ public:
         uint32_t ubatchSize = 512; // physical batch size for prompt processing (0 = batchSize)
     };
 
+    explicit Instance(Model& model, const ControlVector& ctrlVector, InitParams params);
     explicit Instance(Model& model, InitParams params);
     ~Instance();
 
