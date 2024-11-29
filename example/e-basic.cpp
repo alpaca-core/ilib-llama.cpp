@@ -9,6 +9,7 @@
 #include <ac/llama/Model.hpp>
 #include <ac/llama/Instance.hpp>
 #include <ac/llama/Session.hpp>
+#include <ac/llama/ControlVector.hpp>
 
 // logging
 #include <ac/jalog/Instance.hpp>
@@ -28,7 +29,10 @@ int main() try {
     ac::llama::initLibrary();
 
     // load model
-    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
+    // std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
+    // std::string ctrlVectors = AC_TEST_DATA_LLAMA_DIR "/../../../ctrl_vec_cars.gguf";
+    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/../../../llava-llama-3-8b-v1_1-f16.gguf";
+    std::string ctrlVectors = AC_TEST_DATA_LLAMA_DIR "/../../../ctrl_vec-llama3.gguf";
     ac::llama::Model::Params modelParams;
     auto modelLoadProgressCallback = [](float progress) {
         const int barWidth = 50;
@@ -45,10 +49,12 @@ int main() try {
     };
     ac::llama::Model model(modelGguf.c_str(), modelLoadProgressCallback, modelParams);
 
-    // create inference instance
-    ac::llama::Instance instance(model, {});
+    ac::llama::ControlVector ctrlVector(&model, 0, 0, {{ctrlVectors, 0.f}});
 
-    std::string prompt = "The first person to";
+    // create inference instance
+    ac::llama::Instance instance(model, ctrlVector, {});
+
+    std::string prompt = "My car if fast but safety";
     std::cout << "Prompt: " << prompt << "\n";
 
     // start session

@@ -6,6 +6,7 @@
 #include <ac/llama/Init.hpp>
 #include <ac/llama/Model.hpp>
 #include <ac/llama/AntipromptManager.hpp>
+#include <ac/llama/ControlVector.hpp>
 
 #include <ac/local/Instance.hpp>
 #include <ac/local/Model.hpp>
@@ -136,9 +137,9 @@ class LlamaInstance final : public Instance {
 public:
     using Schema = ac::local::schema::Llama::InstanceGeneral;
 
-    LlamaInstance(std::shared_ptr<llama::Model> model, llama::Instance::InitParams params)
+    LlamaInstance(std::shared_ptr<llama::Model> model, const ac::llama::ControlVector& ctrlVector, llama::Instance::InitParams params)
         : m_model(astl::move(model))
-        , m_instance(*m_model, astl::move(params))
+        , m_instance(*m_model, ctrlVector, astl::move(params))
     {}
 
     Dict run(Dict& params) {
@@ -204,6 +205,7 @@ public:
 
 class LlamaModel final : public Model {
     std::shared_ptr<llama::Model> m_model;
+    std::vector<ac::llama::ControlVector::LoadInfo> m_ctrlVectors;
 
     llama::Instance::InitParams translateInstanceParams(Dict& params) {
         llama::Instance::InitParams initParams;
@@ -226,14 +228,16 @@ class LlamaModel final : public Model {
 public:
     using Schema = ac::local::schema::Llama;
 
-    LlamaModel(const std::string& gguf, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
+    LlamaModel(const std::string& gguf, std::vector<llama::ControlVector::LoadInfo>& ctrlVectors, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
         : m_model(std::make_shared<llama::Model>(gguf.c_str(), astl::move(pcb), astl::move(params)))
+        , m_ctrlVectors(astl::move(ctrlVectors))
     {}
 
     virtual std::unique_ptr<Instance> createInstance(std::string_view type, Dict params) override {
+        ac::llama::ControlVector ctrlVector(m_model.get(), 0, 0, m_ctrlVectors);
         switch (Schema::getInstanceById(type)) {
         case Schema::instanceIndex<Schema::InstanceGeneral>:
-            return std::make_unique<LlamaInstance>(m_model, translateInstanceParams(params));
+            return std::make_unique<LlamaInstance>(m_model, ctrlVector, translateInstanceParams(params));
         default:
             throw_ex{} << "llama: unknown instance type: " << type;
             MSVC_WO_10766806();
@@ -256,11 +260,18 @@ public:
     }
 
     virtual ModelPtr loadModel(ModelAssetDesc desc, Dict, ProgressCb progressCb) override {
-        if (desc.assets.size() != 1) throw_ex{} << "llama: expected exactly one local asset";
         auto& gguf = desc.assets.front().path;
+
+        std::vector<llama::ControlVector::LoadInfo> ctrlVectors;
+        for (auto& asset : desc.assets) {
+            if (asset.tag.find("control_vector:")) {
+                ctrlVectors.push_back({asset.path, 2});
+            }
+        }
+
         llama::Model::Params modelParams;
         std::string progressTag = "loading " + gguf;
-        return std::make_shared<LlamaModel>(gguf, [movecap(progressTag, progressCb)](float p) {
+        return std::make_shared<LlamaModel>(gguf, ctrlVectors, [movecap(progressTag, progressCb)](float p) {
             if (progressCb) {
                 progressCb(progressTag, p);
             }

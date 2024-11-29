@@ -32,4 +32,6 @@ target_sources(ac-llama PRIVATE
     ac/llama/AntipromptManager.cpp
     ac/llama/IncrementalStringFinder.hpp
     ac/llama/IncrementalStringFinder.cpp
+    ac/llama/ControlVector.hpp
+    ac/llama/ControlVector.cpp
 )
