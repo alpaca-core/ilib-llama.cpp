@@ -261,7 +261,7 @@ public:
 
         std::vector<std::string> loras;
         for (auto& asset : desc.assets) {
-            if (asset.path.find("lora:") != std::string::npos) {
+            if (asset.tag.find("lora:") != std::string::npos) {
                 loras.push_back(asset.path);
             }
         }
