@@ -3,6 +3,7 @@
 //
 #include "ControlVector.hpp"
 #include "Model.hpp"
+#include "Logging.hpp"
 
 #include <llama.h>
 
@@ -25,18 +26,17 @@ ControlVectorLoadResult loadControlVector(const ControlVector::LoadInfo& loadInf
     };
     struct gguf_context * ctx_gguf = gguf_init_from_file(loadInfo.ggufPath.c_str(), meta_gguf_params);
     if (!ctx_gguf) {
-        // LOG_ERR("%s: failed to load control vector file from %s\n", __func__, loadInfo.fname.c_str());
+        LLAMA_LOG(Error, "Failed to load control vector file from ", loadInfo.ggufPath);
         return result;
     }
 
     int32_t n_tensors = gguf_get_n_tensors(ctx_gguf);
     if (n_tensors == 0) {
-        // LOG_WRN("%s: no direction tensors found in %s\n", __func__, loadInfo.fname.c_str());
+        LLAMA_LOG(Warning, "No direction tensors found in ", loadInfo.ggufPath);
     }
 
     for (int i = 0; i < n_tensors; i++) {
         std::string name = gguf_get_tensor_name(ctx_gguf, i);
-
         int layer_idx = -1;
 
         // split on '.'
@@ -48,24 +48,21 @@ ControlVectorLoadResult loadControlVector(const ControlVector::LoadInfo& loadInf
                 layer_idx = -1;
             }
         }
-        if (layer_idx < 0) {
-            // LOG_ERR("%s: invalid/unparsable direction tensor layer index in %s\n", __func__, loadInfo.fname.c_str());
-            result.nEmbd = -1;
-            break;
-        } else if (layer_idx == 0) {
-            // LOG_ERR("%s: invalid (zero) direction tensor layer index in %s\n", __func__, loadInfo.fname.c_str());
+        if (layer_idx <= 0) {
+            LLAMA_LOG(Error, "Invalid/Unparsable", (layer_idx == 0 ? " (zero)" : " (negative)"),
+                                                " direction tensor layer index in", loadInfo.ggufPath);
             result.nEmbd = -1;
             break;
         }
 
         struct ggml_tensor * tensor = ggml_get_tensor(ctx, name.c_str());
         if (tensor->type != GGML_TYPE_F32) {
-            // LOG_ERR("%s: invalid (non-F32) direction tensor type in %s\n", __func__, loadInfo.fname.c_str());
+            LLAMA_LOG(Error, "Invalid (non-F32) direction tensor type in", loadInfo.ggufPath);
             result.nEmbd = -1;
             break;
         }
         if (ggml_n_dims(tensor) != 1) {
-            // LOG_ERR("%s: invalid (non-1D) direction tensor shape in %s\n", __func__, loadInfo.fname.c_str());
+            LLAMA_LOG(Error, "Invalid (non-1D) direction tensor shape in", loadInfo.ggufPath);
             result.nEmbd = -1;
             break;
         }
@@ -73,7 +70,7 @@ ControlVectorLoadResult loadControlVector(const ControlVector::LoadInfo& loadInf
         if (result.nEmbd == -1) {
             result.nEmbd = ggml_nelements(tensor);
         } else if (ggml_nelements(tensor) != result.nEmbd) {
-            // LOG_ERR("%s: direction tensor in %s does not match previous dimensions\n", __func__, loadInfo.fname.c_str());
+            LLAMA_LOG(Error, "Direction tensor in ", loadInfo.ggufPath, " does not match previous dimensions");
             result.nEmbd = -1;
             break;
         }
@@ -86,11 +83,10 @@ ControlVectorLoadResult loadControlVector(const ControlVector::LoadInfo& loadInf
         for (int j = 0; j < result.nEmbd; j++) {
             dst[j] += src[j] * loadInfo.strength;  // allows multiple directions for same layer in same file
         }
-
     }
 
     if (result.nEmbd == -1) {
-        // LOG_WRN("%s: skipping %s due to invalid direction tensors\n", __func__, loadInfo.fname.c_str());
+        LLAMA_LOG(Warning, "skipping ", loadInfo.ggufPath, " due to invalid direction tensors ");
         result.data.clear();
     }
 
@@ -113,7 +109,7 @@ ControlVector::ControlVector(Model* model, const std::vector<LoadInfo>& infos, i
             break;
         }
         if (nEmbd != -1 && nEmbd != cur.nEmbd) {
-            // LOG_ERR("%s: control vectors in %s does not match previous dimensions\n", __func__, info.fname.c_str());
+            LLAMA_LOG(Error, "Control vectors in ", info.ggufPath," does not match previous dimensions");
             nEmbd = -1;
             break;
         }
@@ -130,7 +126,7 @@ ControlVector::ControlVector(Model* model, const std::vector<LoadInfo>& infos, i
     }
 
     if (nEmbd == -1) {
-        // LOG_ERR("%s: no valid control vector files passed\n", __func__);
+        LLAMA_LOG(Error, "No valid control vectors files passed");
         data.clear();
     }
 }
