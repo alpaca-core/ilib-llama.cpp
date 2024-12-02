@@ -49,10 +49,11 @@ int main() try {
     };
     ac::llama::Model model(modelGguf.c_str(), modelLoadProgressCallback, modelParams);
 
-    ac::llama::ControlVector ctrlVector(&model, 0, 0, {{ctrlVectors, 0.f}});
+    ac::llama::ControlVector ctrlVector(&model, {{ctrlVectors, 0.f}});
 
     // create inference instance
-    ac::llama::Instance instance(model, ctrlVector, {});
+    ac::llama::Instance instance(model, {});
+    instance.addControlVector(ctrlVector);
 
     std::string prompt = "My car if fast but safety";
     std::cout << "Prompt: " << prompt << "\n";

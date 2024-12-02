@@ -139,8 +139,10 @@ public:
 
     LlamaInstance(std::shared_ptr<llama::Model> model, const ac::llama::ControlVector& ctrlVector, llama::Instance::InitParams params)
         : m_model(astl::move(model))
-        , m_instance(*m_model, ctrlVector, astl::move(params))
-    {}
+        , m_instance(*m_model, astl::move(params))
+    {
+        m_instance.addControlVector(ctrlVector);
+    }
 
     Dict run(Dict& params) {
         auto schemaParams = Schema::OpRun::Params::fromDict(params);
@@ -234,7 +236,7 @@ public:
     {}
 
     virtual std::unique_ptr<Instance> createInstance(std::string_view type, Dict params) override {
-        ac::llama::ControlVector ctrlVector(m_model.get(), 0, 0, m_ctrlVectors);
+        ac::llama::ControlVector ctrlVector(m_model.get(), m_ctrlVectors);
         switch (Schema::getInstanceById(type)) {
         case Schema::instanceIndex<Schema::InstanceGeneral>:
             return std::make_unique<LlamaInstance>(m_model, ctrlVector, translateInstanceParams(params));

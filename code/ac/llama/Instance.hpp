@@ -22,11 +22,11 @@ public:
         uint32_t ubatchSize = 512; // physical batch size for prompt processing (0 = batchSize)
     };
 
-    // TODO: Decide which c-tor we should leave
-    // either pass Control Vector as param or implement a load function
-    explicit Instance(Model& model, const ControlVector& ctrlVector, InitParams params);
     explicit Instance(Model& model, InitParams params);
     ~Instance();
+
+    // add control to the context
+    void addControlVector(const ControlVector& ctrlVector);
 
     // do an empty model run to load model data in cache
     void warmup();
