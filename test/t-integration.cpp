@@ -5,6 +5,7 @@
 #include <ac/llama/Model.hpp>
 #include <ac/llama/Instance.hpp>
 #include <ac/llama/Session.hpp>
+#include <ac/llama/ControlVector.hpp>
 
 #include <doctest/doctest.h>
 
@@ -77,6 +78,57 @@ TEST_CASE("inference") {
             REQUIRE(t != ac::llama::Token_Invalid);
             auto text = model.vocab().tokenToString(t);
             CHECK(text.starts_with(" rain")); // could be rains
+        }
+    }
+}
+
+
+TEST_CASE("control_vector") {
+    ac::llama::Model model(Model_117m_q6_k, {}, {});
+    CHECK(!!model.lmodel());
+
+    auto& params = model.params();
+    CHECK(params.gpu);
+    CHECK_FALSE(params.vocabOnly);
+
+    CHECK(model.trainCtxLength() == 1024);
+    CHECK_FALSE(model.shouldAddBosToken());
+    CHECK_FALSE(model.hasEncoder());
+    {
+        std::string ctrlVectorGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6-control_vector.gguf";
+
+        {
+            ac::llama::ControlVector ctrlVector(model, {{ctrlVectorGguf, -2.f}});
+            ac::llama::Instance inst(model, {});
+            inst.addControlVector(ctrlVector);
+            inst.warmup(); // should be safe
+            auto s = inst.newSession({});
+            std::vector<ac::llama::Token> tokens = model.vocab().tokenize("My car's fuel consumption is", true, true);
+            s.setInitialPrompt(tokens);
+            std::string text;
+            for (int i = 0; i < 5; ++i) {
+                auto t = s.getToken();
+                REQUIRE(t != ac::llama::Token_Invalid);
+                text += model.vocab().tokenToString(t);
+            }
+            CHECK(text == " lower than mine's.");
+        }
+
+        {
+            ac::llama::ControlVector ctrlVector(model, {{ctrlVectorGguf, 2.f}});
+            ac::llama::Instance inst(model, {});
+            inst.addControlVector(ctrlVector);
+            inst.warmup(); // should be safe
+            auto s = inst.newSession({});
+            std::vector<ac::llama::Token> tokens = model.vocab().tokenize("My car's fuel consumption is", true, true);
+            s.setInitialPrompt(tokens);
+            std::string text;
+            for (int i = 0; i < 5; ++i) {
+                auto t = s.getToken();
+                REQUIRE(t != ac::llama::Token_Invalid);
+                text += model.vocab().tokenToString(t);
+            }
+            CHECK(text == " more or less constant,");
         }
     }
 }
