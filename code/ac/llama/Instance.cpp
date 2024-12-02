@@ -5,13 +5,17 @@
 #include "Model.hpp"
 #include "Logging.hpp"
 #include "Session.hpp"
+
 #include <llama.h>
+
 #include <astl/throw_stdex.hpp>
 #include <astl/iile.h>
 #include <astl/move.hpp>
 #include <astl/sentry.hpp>
+
 #include <cassert>
 #include <span>
+#include <fstream>
 
 namespace ac::llama {
 
@@ -109,13 +113,46 @@ Session Instance::newSession(const SessionParams params) {
     m_sampler.reset();
     m_sampler.perfReset();
 
+    std::vector<llama_token> sessionTokens;
     Token initialToken; // used to reset the initial prompt to a single token
-
     const auto tokenBos = llama_token_bos(m_model.lmodel());
+
+    if (!params.sessionCachePath.empty()) {
+        bool sessionFileExist = false;
+        {
+            std::ifstream sessionFile(params.sessionCachePath, std::ios::binary);
+            sessionFileExist = sessionFile.good();
+        }
+        if (!sessionFileExist) {
+            LLAMA_LOG(Info, "Session file does not exist, will create: ", params.sessionCachePath);
+        } else {
+            const int n_ctx = llama_n_ctx(m_lctx.get());
+            sessionTokens.resize(n_ctx);
+            size_t tokensOutCount = 0;
+            if (!llama_state_load_file(m_lctx.get(), params.sessionCachePath.c_str(), sessionTokens.data(), sessionTokens.capacity(), &tokensOutCount)) {
+                LLAMA_LOG(Error, "Failed to load session file: ", params.sessionCachePath);
+            } else {
+                LLAMA_LOG(Info, "Loaded a session with prompt size of ", sessionTokens.size(), " tokens");
+            }
+            sessionTokens.resize(tokensOutCount);
+        }
+    }
+
+    astl::sentry saveSessionSentry([params, this, &sessionTokens] {
+        if (!params.sessionCachePath.empty() && !params.sessionCacheReadOnly) {
+            LLAMA_LOG(Info, "saving final output to session file ",params.sessionCachePath);
+            llama_state_save_file(m_lctx.get(), params.sessionCachePath.c_str(), sessionTokens.data(), sessionTokens.size());
+        }
+    });
+
     if (initialPrompt.empty()) {
-        // Should not run without any tokens
-        initialToken = tokenBos;
-        initialPrompt = {&initialToken, 1};
+        if (!sessionTokens.empty()) {
+            initialPrompt = sessionTokens;
+        } else {
+            // Should not run without any tokens
+            initialToken = tokenBos;
+            initialPrompt = {&initialToken, 1};
+        }
     }
 
     if (initialPrompt.empty()) {
@@ -263,6 +300,7 @@ Session Instance::newSession(const SessionParams params) {
         }
 
         auto token = m_sampler.sample(lctx);
+        sessionTokens.push_back(token);
         if (vocab.isEog(token)) {
             co_yield Token_Invalid;
             // don't decode eog tokens in case the the interaction is continued
