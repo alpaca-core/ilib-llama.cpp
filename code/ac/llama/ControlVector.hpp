@@ -20,7 +20,7 @@ public:
         float strength; // The strength of the control vector's influence on the model.
     };
 
-    ControlVector(Model* model, const std::vector<LoadInfo>& infos, int lStart = 0, int lEnd = 0);
+    ControlVector(const Model& model, const std::vector<LoadInfo>& infos, int lStart = 0, int lEnd = 0);
 
     std::vector<float> data;
     int nEmbd = -1;
