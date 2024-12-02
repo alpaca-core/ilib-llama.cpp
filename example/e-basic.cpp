@@ -9,6 +9,7 @@
 #include <ac/llama/Model.hpp>
 #include <ac/llama/Instance.hpp>
 #include <ac/llama/Session.hpp>
+#include <ac/llama/ControlVector.hpp>
 
 // logging
 #include <ac/jalog/Instance.hpp>
@@ -29,6 +30,7 @@ int main() try {
 
     // load model
     std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
+    std::string ctrlVectorGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6-control_vector.gguf";
     ac::llama::Model::Params modelParams;
     auto modelLoadProgressCallback = [](float progress) {
         const int barWidth = 50;
@@ -45,8 +47,13 @@ int main() try {
     };
     ac::llama::Model model(modelGguf.c_str(), modelLoadProgressCallback, modelParams);
 
+
     // create inference instance
     ac::llama::Instance instance(model, {});
+
+    // To add control vector uncomment the following lines
+    // ac::llama::ControlVector ctrlVector(model, {{ctrlVectorGguf, 2.f}});
+    // instance.addControlVector(ctrlVector);
 
     std::string prompt = "The first person to";
     std::cout << "Prompt: " << prompt << "\n";

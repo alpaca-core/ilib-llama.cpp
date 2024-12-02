@@ -12,6 +12,7 @@ namespace ac::llama {
 class Model;
 class Session;
 class StringSession;
+class ControlVector;
 
 class AC_LLAMA_EXPORT Instance {
 public:
@@ -23,6 +24,9 @@ public:
 
     explicit Instance(Model& model, InitParams params);
     ~Instance();
+
+    // add control to the context
+    void addControlVector(const ControlVector& ctrlVector);
 
     // do an empty model run to load model data in cache
     void warmup();

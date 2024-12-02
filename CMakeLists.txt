@@ -71,7 +71,7 @@ if(AC_LLAMA_BUILD_TESTS OR AC_LLAMA_BUILD_EXAMPLES)
         NAME ac-test-data-llama
         VERSION 1.0.0
         GIT_REPOSITORY https://huggingface.co/alpaca-core/ac-test-data-llama
-        GIT_TAG e6860e89d869ea815a4107bce3bb41af9ad1c1f0
+        GIT_TAG 989ab9fe8f85a706453fe1f74a324700132f5881
     )
 endif()
 

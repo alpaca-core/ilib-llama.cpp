@@ -5,11 +5,15 @@
 #include "Model.hpp"
 #include "Logging.hpp"
 #include "Session.hpp"
+#include "ControlVector.hpp"
+
 #include <llama.h>
+
 #include <astl/throw_stdex.hpp>
 #include <astl/iile.h>
 #include <astl/move.hpp>
 #include <astl/sentry.hpp>
+
 #include <cassert>
 #include <span>
 
@@ -53,6 +57,19 @@ llama_batch makeInputBatch(std::span<const Token> tokens) {
     auto nonConstTokens = const_cast<Token*>(tokens.data());
     return llama_batch_get_one(nonConstTokens, int32_t(tokens.size()));
 }
+}
+
+void Instance::addControlVector(const ControlVector& ctrlVector) {
+    int err = llama_control_vector_apply(m_lctx.get(),
+            ctrlVector.data.data(),
+            ctrlVector.data.size(),
+            ctrlVector.nEmbd,
+            ctrlVector.controlVectorLayerStart,
+            ctrlVector.controlVectorLayerEnd);
+
+    if (err) {
+        throw_ex{} << "Failed to apply control vectors!";
+    }
 }
 
 void Instance::warmup() {
