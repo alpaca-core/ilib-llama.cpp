@@ -241,7 +241,7 @@ public:
     {}
 
     virtual std::unique_ptr<Instance> createInstance(std::string_view type, Dict params) override {
-        ac::llama::ControlVector ctrlVector(m_model.get(), m_ctrlVectors);
+        ac::llama::ControlVector ctrlVector(*m_model, m_ctrlVectors);
         if (type == "general") {
             return std::make_unique<LlamaInstance>(m_model, ctrlVector, translateInstanceParams(astl::move(params)));
         }

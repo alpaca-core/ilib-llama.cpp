@@ -97,9 +97,9 @@ ControlVectorLoadResult loadControlVector(const ControlVector::LoadInfo& loadInf
 }
 }
 
-ControlVector::ControlVector(Model* model, const std::vector<LoadInfo>& infos, int lStart, int lEnd)
+ControlVector::ControlVector(const Model& model, const std::vector<LoadInfo>& infos, int lStart, int lEnd)
     : controlVectorLayerStart(lStart <= 0 ? 1 : lStart)
-    , controlVectorLayerEnd(lEnd <= 0 ? llama_n_layer(model->lmodel()) : lEnd)
+    , controlVectorLayerEnd(lEnd <= 0 ? llama_n_layer(model.lmodel()) : lEnd)
 {
     for (const auto & info : infos) {
         auto cur = loadControlVector(info);

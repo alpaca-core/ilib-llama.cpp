@@ -29,10 +29,8 @@ int main() try {
     ac::llama::initLibrary();
 
     // load model
-    // std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
-    // std::string ctrlVectors = AC_TEST_DATA_LLAMA_DIR "/../../../ctrl_vec_cars.gguf";
-    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/../../../llava-llama-3-8b-v1_1-f16.gguf";
-    std::string ctrlVectors = AC_TEST_DATA_LLAMA_DIR "/../../../ctrl_vec-llama3.gguf";
+    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
+    std::string ctrlVectorGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6-control_vector.gguf";
     ac::llama::Model::Params modelParams;
     auto modelLoadProgressCallback = [](float progress) {
         const int barWidth = 50;
@@ -49,13 +47,15 @@ int main() try {
     };
     ac::llama::Model model(modelGguf.c_str(), modelLoadProgressCallback, modelParams);
 
-    ac::llama::ControlVector ctrlVector(&model, {{ctrlVectors, 0.f}});
 
     // create inference instance
     ac::llama::Instance instance(model, {});
-    instance.addControlVector(ctrlVector);
 
-    std::string prompt = "My car if fast but safety";
+    // To add control vector uncomment the following lines
+    // ac::llama::ControlVector ctrlVector(model, {{ctrlVectorGguf, 2.f}});
+    // instance.addControlVector(ctrlVector);
+
+    std::string prompt = "The first person to";
     std::cout << "Prompt: " << prompt << "\n";
 
     // start session
