@@ -16,7 +16,8 @@ using TokenVec = std::vector<Token>;
 // * for every subsequent prompt, it yields the sum of prompt tokens and the initial prompt tokens (zipped, wrapped)
 
 Session TestSession() {
-    auto initialPrompt = co_await Session::Prompt{};
+    auto sessionOp = co_await Session::Prompt{};
+    auto& initialPrompt = sessionOp.pendingPrompt;
 
     if (initialPrompt.empty()) {
         throw std::runtime_error("empty");
@@ -35,7 +36,8 @@ Session TestSession() {
     current.push_back(Token(initial.size()));
 
     while (true) {
-        auto prompt = co_await Session::Prompt{};
+        auto op = co_await Session::Prompt{};
+        auto& prompt = op.pendingPrompt;
 
         if (prompt.empty()) {
             if (current.empty() && yieldedInvalid) {
