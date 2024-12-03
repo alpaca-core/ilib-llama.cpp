@@ -96,7 +96,8 @@ void Instance::warmup() {
 
 Session Instance::newSession(const SessionParams params) {
     // not a real await as we return suspend_always initially
-    auto initialPrompt = co_await Session::Prompt{};
+    auto op = co_await Session::Prompt{};
+    auto& initialPrompt = op.pendingPrompt;
 
     if (m_hasActiveSession) {
         throw_ex{} << "Instance already has an active session";
@@ -117,33 +118,24 @@ Session Instance::newSession(const SessionParams params) {
     Token initialToken; // used to reset the initial prompt to a single token
     const auto tokenBos = llama_token_bos(m_model.lmodel());
 
-    if (!params.sessionCachePath.empty()) {
-        bool sessionFileExist = false;
-        {
-            std::ifstream sessionFile(params.sessionCachePath, std::ios::binary);
-            sessionFileExist = sessionFile.good();
-        }
-        if (!sessionFileExist) {
-            LLAMA_LOG(Info, "Session file does not exist, will create: ", params.sessionCachePath);
+    std::string cachePath = params.sessionCachePath;
+    bool cacheReadOnly = params.sessionCacheReadOnly;
+
+    if (!cachePath.empty()) {
+        if (!fileExist(cachePath)) {
+            LLAMA_LOG(Info, "Session file does not exist, will create: ", cachePath);
         } else {
             const int n_ctx = llama_n_ctx(m_lctx.get());
             sessionTokens.resize(n_ctx);
             size_t tokensOutCount = 0;
-            if (!llama_state_load_file(m_lctx.get(), params.sessionCachePath.c_str(), sessionTokens.data(), sessionTokens.capacity(), &tokensOutCount)) {
-                LLAMA_LOG(Error, "Failed to load session file: ", params.sessionCachePath);
+            if (!llama_state_load_file(m_lctx.get(), cachePath.c_str(), sessionTokens.data(), sessionTokens.capacity(), &tokensOutCount)) {
+                LLAMA_LOG(Error, "Failed to load session file: ", cachePath);
             } else {
                 LLAMA_LOG(Info, "Loaded a session with prompt size of ", sessionTokens.size(), " tokens");
             }
             sessionTokens.resize(tokensOutCount);
         }
     }
-
-    astl::sentry saveSessionSentry([params, this, &sessionTokens] {
-        if (!params.sessionCachePath.empty() && !params.sessionCacheReadOnly) {
-            LLAMA_LOG(Info, "saving final output to session file ",params.sessionCachePath);
-            llama_state_save_file(m_lctx.get(), params.sessionCachePath.c_str(), sessionTokens.data(), sessionTokens.size());
-        }
-    });
 
     if (initialPrompt.empty()) {
         if (!sessionTokens.empty()) {
@@ -284,8 +276,34 @@ Session Instance::newSession(const SessionParams params) {
 
     co_await Session::StartGeneration{}; // suspend pre generation
 
+    std::string sessionPath;
+
     while (true) {
-        auto prompt = co_await Session::Prompt{};
+        auto currOp = co_await Session::Prompt{};
+        assert(currOp.type != Session::SessionOpData::OpType::Count);
+
+        if (currOp.type == Session::SessionOpData::OpType::SetCachePath) {
+            cachePath = currOp.cachePath;
+            cacheReadOnly = false;
+            if (!cachePath.empty() && !cacheReadOnly) {
+                LLAMA_LOG(Info, "Saving final output to session file ", cachePath);
+                llama_state_save_file(m_lctx.get(), cachePath.c_str(), sessionTokens.data(), sessionTokens.size());
+            }
+            continue;
+        }
+
+        if (currOp.type == Session::SessionOpData::OpType::GetState) {
+            // get the state
+            const auto size = llama_state_get_size(m_lctx.get());
+            std::vector<uint8_t> state(size);
+            if (llama_state_get_data(m_lctx.get(), state.data(), size) != size) {
+                throw_ex{} << "Failed to get state";
+            }
+            co_yield state;
+            continue;
+        }
+
+        auto& prompt = currOp.pendingPrompt;
         if (!prompt.empty()) {
 
             // reset sampling and don't allow previous inputs to affect the generation
