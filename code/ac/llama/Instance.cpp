@@ -118,33 +118,9 @@ Session Instance::newSession(const SessionParams params) {
     Token initialToken; // used to reset the initial prompt to a single token
     const auto tokenBos = llama_token_bos(m_model.lmodel());
 
-    std::string cachePath = params.sessionCachePath;
-    bool cacheReadOnly = params.sessionCacheReadOnly;
-
-    if (!cachePath.empty()) {
-        if (!fileExist(cachePath)) {
-            LLAMA_LOG(Info, "Session file does not exist, will create: ", cachePath);
-        } else {
-            const int n_ctx = llama_n_ctx(m_lctx.get());
-            sessionTokens.resize(n_ctx);
-            size_t tokensOutCount = 0;
-            if (!llama_state_load_file(m_lctx.get(), cachePath.c_str(), sessionTokens.data(), sessionTokens.capacity(), &tokensOutCount)) {
-                LLAMA_LOG(Error, "Failed to load session file: ", cachePath);
-            } else {
-                LLAMA_LOG(Info, "Loaded a session with prompt size of ", sessionTokens.size(), " tokens");
-            }
-            sessionTokens.resize(tokensOutCount);
-        }
-    }
-
     if (initialPrompt.empty()) {
-        if (!sessionTokens.empty()) {
-            initialPrompt = sessionTokens;
-        } else {
-            // Should not run without any tokens
-            initialToken = tokenBos;
-            initialPrompt = {&initialToken, 1};
-        }
+        initialToken = tokenBos;
+        initialPrompt = {&initialToken, 1};
     }
 
     if (initialPrompt.empty()) {
@@ -281,16 +257,6 @@ Session Instance::newSession(const SessionParams params) {
     while (true) {
         auto currOp = co_await Session::Prompt{};
         assert(currOp.type != Session::SessionOpData::OpType::Count);
-
-        if (currOp.type == Session::SessionOpData::OpType::SetCachePath) {
-            cachePath = currOp.cachePath;
-            cacheReadOnly = false;
-            if (!cachePath.empty() && !cacheReadOnly) {
-                LLAMA_LOG(Info, "Saving final output to session file ", cachePath);
-                llama_state_save_file(m_lctx.get(), cachePath.c_str(), sessionTokens.data(), sessionTokens.size());
-            }
-            continue;
-        }
 
         if (currOp.type == Session::SessionOpData::OpType::GetState) {
             // get the state

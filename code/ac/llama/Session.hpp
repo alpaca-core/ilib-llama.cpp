@@ -19,7 +19,6 @@ public:
     struct SessionOpData {
         enum OpType {
             Prompt,
-            SetCachePath,
             GetState,
 
             Count
@@ -92,7 +91,6 @@ public:
             bool await_ready() noexcept { return true; }
             SessionOpData await_resume() noexcept {
                 // clear pending after returning it
-                // SessionOpData data{self.m_pendingOp, self.m_pendingPrompt, self.m_cachePath};
                 return std::exchange(self.m_pendingOpData, SessionOpData());
             }
             void await_suspend(std::coroutine_handle<>) noexcept {}
@@ -106,12 +104,6 @@ public:
             // assert(m_pendingOpData.type == SessionOpData::Count);
             m_pendingOpData.type = SessionOpData::Prompt;
             m_pendingOpData.pendingPrompt = prompt;
-        }
-
-        void setCachePath(std::string_view path) {
-            // assert(m_pendingOpData.type == SessionOpData::Count);
-            m_pendingOpData.type = SessionOpData::SetCachePath;
-            m_pendingOpData.cachePath = path;
         }
 
         void getState() {
@@ -184,10 +176,6 @@ public:
         m_handle.resume();
         assert(m_handle.promise().value().type == SessionResult::Type::State);
         return std::move(m_handle.promise().value().state);
-    }
-
-    void setCachePath(std::string_view path) {
-        m_handle.promise().setCachePath(path);
     }
 
 private:

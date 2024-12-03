@@ -34,9 +34,6 @@ public:
         // if true, the inference tries to extend the context by truncating previous tokens
         // only used if gaFactor == 1
         bool infiniteContext = true;
-
-        std::string sessionCachePath = ""; // path to load/save session data
-        bool sessionCacheReadOnly = false; // if true, the session cache is read-only
     };
 
     // only one session per instance can be active at a time
