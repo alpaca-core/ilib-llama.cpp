@@ -269,6 +269,15 @@ Session Instance::newSession(const SessionParams params) {
             continue;
         }
 
+        if (currOp.type == Session::SessionOpData::OpType::SetState) {
+            auto& state = currOp.state;
+            if (llama_state_set_data(m_lctx.get(), state.data(), state.size()) != state.size()) {
+                throw_ex{} << "Failed to set state";
+            }
+            co_yield true;
+            continue;
+        }
+
         auto& prompt = currOp.pendingPrompt;
         if (!prompt.empty()) {
 

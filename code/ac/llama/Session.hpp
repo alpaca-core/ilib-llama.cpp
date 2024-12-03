@@ -20,34 +20,34 @@ public:
         enum OpType {
             Prompt,
             GetState,
+            SetState,
 
             Count
         };
         OpType type = Count;
 
         std::span<const Token> pendingPrompt;
-        std::string cachePath;
+        std::span<uint8_t> state;
     };
 
     struct SessionResult {
         enum class Type {
             Token,
             State,
+            Bool,
             Invalid
         };
 
         Type type = Type::Invalid;
         Token token = Token_Invalid;
         std::vector<uint8_t> state;
+        bool result = false;
     };
 
     class promise_type {
         SessionResult m_value;
 
         SessionOpData m_pendingOpData;
-        // SessionOpData::OpType m_pendingOp = SessionOpData::Count;
-        // std::span<const Token> m_pendingPrompt;
-        // std::string m_cachePath;
 
         std::exception_ptr m_exception;
     public:
@@ -69,9 +69,15 @@ public:
             return {};
         }
 
-        std::suspend_always yield_value(std::vector<uint8_t> stateData) noexcept {
+        std::suspend_always yield_value(std::vector<uint8_t>& stateData) noexcept {
             m_value.type = SessionResult::Type::State;
-            m_value.state = stateData;
+            m_value.state = std::move(stateData);
+            return {};
+        }
+
+        std::suspend_always yield_value(bool result) noexcept {
+            m_value.type = SessionResult::Type::Bool;
+            m_value.result = result;
             return {};
         }
 
@@ -101,9 +107,15 @@ public:
         }
 
         void setPrompt(std::span<const Token> prompt) {
-            // assert(m_pendingOpData.type == SessionOpData::Count);
+            assert(m_pendingOpData.type == SessionOpData::Count);
             m_pendingOpData.type = SessionOpData::Prompt;
             m_pendingOpData.pendingPrompt = prompt;
+        }
+
+        void setState(std::span<uint8_t> state) {
+            assert(m_pendingOpData.type == SessionOpData::Count);
+            m_pendingOpData.type = SessionOpData::SetState;
+            m_pendingOpData.state = state;
         }
 
         void getState() {
@@ -167,15 +179,31 @@ public:
         m_handle.promise().setOpType(SessionOpData::Prompt);
         m_handle.resume();
         m_handle.promise().rethrowIfException();
+
+        m_handle.promise().setOpType(SessionOpData::Count);
         assert(m_handle.promise().value().type == SessionResult::Type::Token);
+
         return std::move(m_handle.promise().value().token);
     }
 
     std::vector<uint8_t> getState() {
         m_handle.promise().getState();
         m_handle.resume();
+
+        m_handle.promise().setOpType(SessionOpData::Count);
         assert(m_handle.promise().value().type == SessionResult::Type::State);
+
         return std::move(m_handle.promise().value().state);
+    }
+
+    bool setState(std::span<uint8_t> state) {
+        m_handle.promise().setState(state);
+        m_handle.resume();
+
+        m_handle.promise().setOpType(SessionOpData::Count);
+        assert(m_handle.promise().value().type == SessionResult::Type::Bool);
+
+        return std::move(m_handle.promise().value().result);
     }
 
 private:
