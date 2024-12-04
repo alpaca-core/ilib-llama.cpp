@@ -236,9 +236,14 @@ class LlamaModel final : public Model {
 public:
 
     LlamaModel(const std::string& gguf, std::span<std::string> loras, std::vector<llama::ControlVector::LoadInfo>& ctrlVectors, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
-        : m_model(std::make_shared<llama::Model>(llama::Model(gguf.c_str(), loras, astl::move(pcb), astl::move(params))))
+        : m_model(std::make_shared<llama::Model>(llama::ModelRegistry::getInstance().loadModel(gguf.c_str(), astl::move(pcb), params), astl::move(params)))
         , m_ctrlVectors(astl::move(ctrlVectors))
-    {}
+    {
+        for(auto& loraPath: loras) {
+            auto lora = llama::ModelRegistry::getInstance().loadLora(m_model.get(), loraPath);
+            m_model->addLora(lora);;
+        }
+    }
 
     virtual std::unique_ptr<Instance> createInstance(std::string_view type, Dict params) override {
         ac::llama::ControlVector ctrlVector(*m_model, m_ctrlVectors);

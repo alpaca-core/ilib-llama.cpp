@@ -34,19 +34,10 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 } // namespace
 
 
-Model::Model(const char* pathToGguf, std::span<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params)
-    : m_params(astl::move(params))
-{
-    m_lmodel = ModelRegistry::getInstance().loadModel(pathToGguf, std::move(loadProgressCb), m_params);
-    if (!m_lmodel) {
-        throw std::runtime_error("Failed to load model");
-    }
-
-    for(auto& loraPath: loras) {
-        auto lora = ModelRegistry::getInstance().loadLora(this, loraPath);
-        m_loras.push_back(lora);
-    }
-}
+Model::Model(std::shared_ptr<llama_model> lmodel, Params params)
+    : m_lmodel(std::move(lmodel))
+    , m_params(astl::move(params))
+{}
 
 Model::~Model() = default;
 
