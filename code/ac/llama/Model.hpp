@@ -26,7 +26,7 @@ public:
         bool prefixInputsWithBos = false; // add bos token to interactive inputs (#13)
     };
 
-    Model(const char* pathToGguf, std::span<std::string> loras, ModelLoadProgressCb loadProgressCb, Params params);
+    Model(std::shared_ptr<llama_model> model, Params params);
     ~Model();
 
     const Params& params() const noexcept { return m_params; }
@@ -57,7 +57,7 @@ private:
     Vocab m_vocab{*this};
 };
 
-class ModelRegistry {
+class AC_LLAMA_EXPORT ModelRegistry {
 public:
     static ModelRegistry& getInstance() {
         static ModelRegistry instance;

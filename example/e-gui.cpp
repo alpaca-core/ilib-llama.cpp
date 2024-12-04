@@ -61,7 +61,7 @@ public:
     class State {
     public:
         State(const std::string& ggufPath, const ac::llama::Model::Params& modelParams)
-            : m_model(ggufPath.c_str(), {}, printModelLoadProgress, modelParams)
+            : m_model(ac::llama::ModelRegistry::getInstance().loadModel(ggufPath.c_str(), printModelLoadProgress, modelParams), modelParams)
         {}
 
         class Instance {

@@ -45,7 +45,8 @@ int main() try {
         }
         return true;
     };
-    ac::llama::Model model(modelGguf.c_str(), {}, modelLoadProgressCallback, modelParams);
+    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(modelGguf, modelLoadProgressCallback, modelParams);
+    ac::llama::Model model(lmodel, modelParams);
 
 
     // create inference instance

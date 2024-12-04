@@ -22,7 +22,9 @@ GlobalFixture globalFixture;
 const char* Model_117m_q6_k = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
 
 TEST_CASE("vocab only") {
-    ac::llama::Model model(Model_117m_q6_k, {}, {}, { .vocabOnly = true });
+    ac::llama::Model::Params iParams = { .vocabOnly = true };
+    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(Model_117m_q6_k, {}, iParams);
+    ac::llama::Model model(lmodel, iParams);
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
@@ -40,7 +42,9 @@ TEST_CASE("vocab only") {
 }
 
 TEST_CASE("inference") {
-    ac::llama::Model model(Model_117m_q6_k, {}, {}, {});
+    ac::llama::Model::Params iParams = {};
+    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(Model_117m_q6_k, {}, iParams);
+    ac::llama::Model model(lmodel, iParams);
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
