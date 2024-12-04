@@ -11,17 +11,17 @@
 #include <ac/local/Model.hpp>
 #include <ac/local/ModelLoader.hpp>
 
+#include <ac/schema/LlamaCpp.hpp>
+#include <ac/schema/DispatchHelpers.hpp>
+
 #include <astl/move.hpp>
 #include <astl/move_capture.hpp>
 #include <astl/iile.h>
 #include <astl/throw_stdex.hpp>
 #include <astl/workarounds.h>
 
-#include <ac/Dict.hpp>
-
 #include "aclp-llama-version.h"
 #include "aclp-llama-interface.hpp"
-#include "llama-schema.hpp"
 
 namespace ac::local {
 
@@ -37,27 +37,25 @@ class ChatSession {
     bool m_addUserPrefix = true;
     bool m_addAssistantPrefix = true;
 public:
-    using Schema = ac::local::schema::Llama::InstanceGeneral;
+    using Interface = ac::local::schema::LlamaCppInterface;
 
-    ChatSession(llama::Instance& instance, Dict& params)
+    ChatSession(llama::Instance& instance, Interface::OpChatBegin::Params& params)
         : m_session(instance.newSession({}))
         , m_vocab(instance.model().vocab())
     {
-        auto schemaParams = Schema::OpBeginChat::Params::fromDict(params);
-        m_promptTokens = instance.model().vocab().tokenize(schemaParams.setup, true, true);
+        m_promptTokens = instance.model().vocab().tokenize(params.setup.value(), true, true);
         m_session.setInitialPrompt(m_promptTokens);
 
         m_userPrefix = "\n";
-        m_userPrefix += schemaParams.roleUser;
+        m_userPrefix += params.roleUser;
         m_userPrefix += ":";
         m_assistantPrefix = "\n";
-        m_assistantPrefix += schemaParams.roleAssistant;
+        m_assistantPrefix += params.roleAssistant;
         m_assistantPrefix += ":";
     }
 
-    void pushPrompt(Dict& params) {
-        auto schemaParams = Schema::OpAddChatPrompt::Params::fromDict(params);
-        auto& prompt = schemaParams.prompt;
+    void pushPrompt(Interface::OpAddChatPrompt::Params& params) {
+        auto& prompt = params.prompt.value();
 
         // prefix with space as the generated content doesn't include it
         prompt = ' ' + prompt;
@@ -76,7 +74,7 @@ public:
         m_addAssistantPrefix = false;
     }
 
-    Dict getResponse() {
+    Interface::OpGetChatResponse::Return getResponse() {
         if (m_addAssistantPrefix) {
             // generated responses are requested first, but we haven't yet fed the assistant prefix to the model
             auto prompt = m_assistantPrefix;
@@ -89,8 +87,8 @@ public:
         ac::llama::IncrementalStringFinder finder(m_userPrefix);
 
         m_addUserPrefix = true;
-        Schema::OpGetChatResponse::Return ret;
-        auto& response = ret.response;
+        Interface::OpGetChatResponse::Return ret;
+        auto& response = ret.response.materialize();
 
 
         for (int i = 0; i < 1000; ++i) {
@@ -122,7 +120,7 @@ public:
             response.erase(0, 1);
         }
 
-        return ret.toDict();
+        return ret;
     }
 };
 
@@ -133,18 +131,21 @@ class LlamaInstance final : public Instance {
 
     std::optional<ChatSession> m_chatSession;
 
+    schema::OpDispatcherData m_dispatcherData;
 public:
-    using Schema = ac::local::schema::Llama::InstanceGeneral;
+    using Schema = ac::local::schema::LlamaCppLoader::InstanceGeneral;
+    using Interface = ac::local::schema::LlamaCppInterface;
 
     LlamaInstance(std::shared_ptr<llama::Model> model, llama::Instance::InitParams params)
         : m_model(astl::move(model))
         , m_instance(*m_model, astl::move(params))
-    {}
+    {
+        schema::registerHandlers<Interface::Ops>(m_dispatcherData, *this);
+    }
 
-    Dict run(Dict& params) {
-        auto schemaParams = Schema::OpRun::Params::fromDict(params);
-        auto& prompt = schemaParams.prompt;
-        const auto maxTokens = schemaParams.maxTokens;
+    Interface::OpRun::Return on(Interface::OpRun, Interface::OpRun::Params&& params) {
+        auto& prompt = params.prompt.value();
+        const auto maxTokens = params.maxTokens;
 
         auto s = m_instance.newSession({});
 
@@ -154,12 +155,12 @@ public:
         auto& model = m_instance.model();
         ac::llama::AntipromptManager antiprompt;
 
-        for (auto& ap : schemaParams.antiprompts) {
+        for (auto& ap : params.antiprompts.value()) {
             antiprompt.addAntiprompt(ap);
         }
 
-        Schema::OpRun::Return ret;
-        auto& result = ret.result;
+        Interface::OpRun::Return ret;
+        auto& result = ret.result.materialize();
         for (int i = 0; i < maxTokens; ++i) {
             auto t = s.getToken();
             if (t == ac::llama::Token_Invalid) {
@@ -174,67 +175,72 @@ public:
             result += tokenStr;
         }
 
-        return ret.toDict();
+        return ret;
+    }
+
+    Interface::OpChatBegin::Return on(Interface::OpChatBegin, Interface::OpChatBegin::Params&& params) {
+        m_chatSession.emplace(m_instance, params);
+        return {};
+    }
+
+    Interface::OpAddChatPrompt::Return on(Interface::OpAddChatPrompt, Interface::OpAddChatPrompt::Params&& params) {
+        if (!m_chatSession) {
+            throw_ex{} << "llama: chat not started";
+        }
+        m_chatSession->pushPrompt(params);
+        return {};
+    }
+
+    Interface::OpGetChatResponse::Return on(Interface::OpGetChatResponse, Interface::OpGetChatResponse::Params&&) {
+        if (!m_chatSession) {
+            throw_ex{} << "llama: chat not started";
+        }
+        return m_chatSession->getResponse();
     }
 
     virtual Dict runOp(std::string_view op, Dict params, ProgressCb) override {
-        switch (Schema::getOpIndexById(op)) {
-        case Schema::opIndex<Schema::OpRun>:
-            return run(params);
-        case Schema::opIndex<Schema::OpBeginChat>:
-            m_chatSession.emplace(m_instance, params);
-            return {};
-        case Schema::opIndex<Schema::OpAddChatPrompt>:
-            if (!m_chatSession) {
-                throw_ex{} << "llama: chat not started";
-            }
-            m_chatSession->pushPrompt(params);
-            return {};
-        case Schema::opIndex<Schema::OpGetChatResponse>:
-            if (!m_chatSession) {
-                throw_ex{} << "llama: chat not started";
-            }
-            return m_chatSession->getResponse();
-        default:
+        auto ret = m_dispatcherData.dispatch(op, astl::move(params));
+        if (!ret) {
             throw_ex{} << "llama: unknown op: " << op;
-            MSVC_WO_10766806();
         }
+        return *ret;
     }
 };
 
 class LlamaModel final : public Model {
+    using Schema = ac::local::schema::LlamaCppLoader;
+
     std::shared_ptr<llama::Model> m_model;
 
-    llama::Instance::InitParams translateInstanceParams(Dict& params) {
+    llama::Instance::InitParams translateInstanceParams(Dict&& params) {
         llama::Instance::InitParams initParams;
-        auto schemaParams = Schema::InstanceGeneral::Params::fromDict(params);
+        auto schemaParams = schema::Struct_fromDict<Schema::InstanceGeneral::Params>(astl::move(params));
 
-        if (schemaParams.ctxSize) {
-            initParams.ctxSize = *schemaParams.ctxSize;
+        if (schemaParams.ctxSize.hasValue()) {
+            initParams.ctxSize = schemaParams.ctxSize;
         }
 
-        if (schemaParams.batchSize) {
-            initParams.batchSize = *schemaParams.batchSize;
+        if (schemaParams.batchSize.hasValue()) {
+            initParams.batchSize = schemaParams.batchSize;
         }
 
-        if (schemaParams.ubatchSize) {
-            initParams.ubatchSize = *schemaParams.ubatchSize;
+        if (schemaParams.ubatchSize.hasValue()) {
+            initParams.ubatchSize = schemaParams.ubatchSize;
         }
 
         return initParams;
     }
 public:
-    using Schema = ac::local::schema::Llama;
 
     LlamaModel(const std::string& gguf, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
         : m_model(std::make_shared<llama::Model>(gguf.c_str(), astl::move(pcb), astl::move(params)))
     {}
 
     virtual std::unique_ptr<Instance> createInstance(std::string_view type, Dict params) override {
-        switch (Schema::getInstanceById(type)) {
-        case Schema::instanceIndex<Schema::InstanceGeneral>:
-            return std::make_unique<LlamaInstance>(m_model, translateInstanceParams(params));
-        default:
+        if (type == "general") {
+            return std::make_unique<LlamaInstance>(m_model, translateInstanceParams(astl::move(params)));
+        }
+        else {
             throw_ex{} << "llama: unknown instance type: " << type;
             MSVC_WO_10766806();
         }
