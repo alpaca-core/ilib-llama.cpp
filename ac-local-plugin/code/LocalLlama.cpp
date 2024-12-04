@@ -145,7 +145,7 @@ public:
 
     Interface::OpRun::Return on(Interface::OpRun, Interface::OpRun::Params&& params) {
         auto& prompt = params.prompt.value();
-        const auto maxTokens = params.maxTokens;
+        const auto maxTokens = params.maxTokens.value();
 
         auto s = m_instance.newSession({});
 
@@ -161,7 +161,7 @@ public:
 
         Interface::OpRun::Return ret;
         auto& result = ret.result.materialize();
-        for (int i = 0; i < maxTokens; ++i) {
+        for (unsigned int i = 0; i < maxTokens; ++i) {
             auto t = s.getToken();
             if (t == ac::llama::Token_Invalid) {
                 break;
