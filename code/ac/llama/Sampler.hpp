@@ -24,7 +24,6 @@ public:
         Top_K,
         Top_P,
         Min_P,
-        Tfs_Z,
         Typical_P,
         Temperature,
         XTC,
@@ -68,7 +67,6 @@ public:
 
         std::vector<SamplingType> samplerSequence = {
             SamplingType::Top_K,
-            SamplingType::Tfs_Z,
             SamplingType::Typical_P,
             SamplingType::Top_P,
             SamplingType::Min_P,

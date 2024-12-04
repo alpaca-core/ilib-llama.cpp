@@ -81,7 +81,6 @@ Sampler::Sampler(Model& model, const Params& params)
                 switch (type)
                 {
                 case SamplingType::Top_K: return llama_sampler_init_top_k(params.topK);
-                case SamplingType::Tfs_Z: return llama_sampler_init_tail_free(params.tfsZ, minKeep);
                 case SamplingType::Typical_P: return llama_sampler_init_typical(params.typicalP, minKeep);
                 case SamplingType::Top_P: return llama_sampler_init_top_p(params.topP, minKeep);
                 case SamplingType::Min_P: return llama_sampler_init_min_p(params.minP, minKeep);
