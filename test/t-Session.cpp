@@ -17,6 +17,11 @@ using TokenVec = std::vector<Token>;
 
 Session TestSession() {
     auto sessionOp = co_await Session::Prompt{};
+
+    if (sessionOp.type != Session::SessionOpData::OpType::Prompt &&
+        sessionOp.type != Session::SessionOpData::OpType::SetState) {
+        throw std::runtime_error("invalid initial op");
+    }
     auto& initialPrompt = sessionOp.pendingPrompt;
 
     if (initialPrompt.empty()) {
@@ -37,35 +42,70 @@ Session TestSession() {
 
     while (true) {
         auto op = co_await Session::Prompt{};
-        auto& prompt = op.pendingPrompt;
-
-        if (prompt.empty()) {
-            if (current.empty() && yieldedInvalid) {
-                current.push_back(1); // ok one more
-            }
+        switch (op.type)
+        {
+        case Session::SessionOpData::OpType::GetState:
+        {
+            std::vector<uint8_t> state = {1, 2, 3};
+            co_yield state;
+            continue;
         }
-        else {
-            // rewrite current
-            current.assign(prompt.begin(), prompt.end());
-        }
-
-        yieldedInvalid = false;
-
-        if (current.empty()) {
-            co_yield Token_Invalid;
-            yieldedInvalid = true;
-        }
-        else {
-            if (current.front() == 0xBADF00D) {
-                throw std::runtime_error("test exception");
+        case Session::SessionOpData::OpType::SetState:
+        {
+            auto& state = op.state;
+            if (state.empty()) {
+                throw std::runtime_error("empty state");
             }
-            co_yield current.front() + *iiter; // zip
-            current.pop_front();
-            ++iiter;
-            if (iiter == initial.end()) {
-                // wrap
-                iiter = initial.begin();
+
+            bool sameAsPassed = true;
+            for (size_t i = 0; i < state.size(); i++)
+            {
+                if (state[i] != i) {
+                    sameAsPassed = false;
+                    break;
+                }
             }
+
+            co_yield sameAsPassed;
+            continue;
+        }
+        case Session::SessionOpData::OpType::Prompt:
+        {
+            auto& prompt = op.pendingPrompt;
+
+            if (prompt.empty()) {
+                if (current.empty() && yieldedInvalid) {
+                    current.push_back(1); // ok one more
+                }
+            }
+            else {
+                // rewrite current
+                current.assign(prompt.begin(), prompt.end());
+            }
+
+            yieldedInvalid = false;
+
+            if (current.empty()) {
+                co_yield Token_Invalid;
+                yieldedInvalid = true;
+            }
+            else {
+                if (current.front() == 0xBADF00D) {
+                    throw std::runtime_error("test exception");
+                }
+                co_yield current.front() + *iiter; // zip
+                current.pop_front();
+                ++iiter;
+                if (iiter == initial.end()) {
+                    // wrap
+                    iiter = initial.begin();
+                }
+            }
+            continue;
+        }
+        default:
+            std::runtime_error("invalid op");
+            break;
         }
     }
 }
@@ -165,4 +205,44 @@ TEST_CASE("exceptions") {
     // everything is invalid from now on
     CHECK(s.getToken() == Token_Invalid);
     CHECK(s.getToken() == Token_Invalid);
+}
+
+TEST_CASE("states") {
+    Session s = TestSession();
+    SUBCASE("no init operation") {
+        CHECK_THROWS_WITH(s.getState();, "invalid initial op");
+    }
+
+    SUBCASE("get state") {
+        {
+            TokenVec initialPrompt = { 1, 2, 3 };
+            s.setInitialPrompt(initialPrompt);
+        }
+
+        std::vector<uint8_t> expectedState = {1, 2, 3};
+        auto state = s.getState();
+        CHECK(state.size() == expectedState.size());
+        for (size_t i = 0; i < state.size(); i++)
+        {
+            CHECK(state[i] == expectedState[i]);
+        }
+    }
+
+    SUBCASE("set empty state") {
+        {
+            TokenVec initialPrompt = { 1, 2, 3 };
+            s.setInitialPrompt(initialPrompt);
+        }
+        CHECK_THROWS_WITH(s.setState({}), "empty state");
+    }
+
+    SUBCASE("set state") {
+        {
+            TokenVec initialPrompt = { 1, 2, 3 };
+            s.setInitialPrompt(initialPrompt);
+        }
+        std::vector<uint8_t> state = {0, 1, 2, 3};
+        auto res = s.setState(state);
+        CHECK(res);
+    }
 }

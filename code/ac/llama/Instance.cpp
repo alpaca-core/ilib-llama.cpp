@@ -101,6 +101,11 @@ Session Instance::newSession(const SessionParams params) {
     if (m_hasActiveSession) {
         throw_ex{} << "Instance already has an active session";
     }
+
+    if (op.type != Session::SessionOpData::OpType::Prompt && op.type != Session::SessionOpData::OpType::SetState) {
+        throw_ex{} << "Invalid initial session operation type";
+    }
+
     m_hasActiveSession = true;
     astl::sentry closeSessionSentry([this] { m_hasActiveSession = false; });
 
@@ -117,16 +122,12 @@ Session Instance::newSession(const SessionParams params) {
     const auto tokenBos = llama_token_bos(m_model.lmodel());
     const auto ctxLen = llama_n_ctx(lctx);
     const auto maxTokens = ctxLen - 4; // (#16)
-
-    auto& initialPrompt = op.pendingPrompt;
-    const auto numKeep = std::min(uint32_t(initialPrompt.size()), maxTokens); // number of tokens to keep in the context in case we overflow
-
-    if (op.type != Session::SessionOpData::OpType::Prompt && op.type != Session::SessionOpData::OpType::SetState) {
-        throw_ex{} << "Invalid initial session operation type";
-    }
+    auto numKeep = llama_get_kv_cache_token_count(lctx);
 
     if (op.type == Session::SessionOpData::OpType::Prompt) {
         Token initialToken; // used to reset the initial prompt to a single token
+        auto& initialPrompt = op.pendingPrompt;
+        numKeep = std::min(uint32_t(initialPrompt.size()), maxTokens); // number of tokens to keep in the context in case we overflow
 
         if (initialPrompt.empty()) {
             initialToken = tokenBos;
@@ -259,8 +260,7 @@ Session Instance::newSession(const SessionParams params) {
     };
 
     if (op.type == Session::SessionOpData::OpType::Prompt) {
-        doDecode(initialPrompt, Source::InitialPrompt);
-        initialPrompt = {}; // clear as after the co_await below the memory may be invalid
+        doDecode(op.pendingPrompt, Source::InitialPrompt);
 
         co_await Session::StartGeneration{}; // suspend pre generation
     } else {
@@ -270,7 +270,6 @@ Session Instance::newSession(const SessionParams params) {
 
     while (true) {
         auto currOp = co_await Session::Prompt{};
-        assert(currOp.type != Session::SessionOpData::OpType::Count);
 
         if (currOp.type == Session::SessionOpData::OpType::GetState) {
             // get the state
@@ -281,42 +280,43 @@ Session Instance::newSession(const SessionParams params) {
             }
             co_yield state;
             continue;
-        }
-
-        if (currOp.type == Session::SessionOpData::OpType::SetState) {
+        } else if (currOp.type == Session::SessionOpData::OpType::SetState) {
             auto& state = currOp.state;
             if (llama_state_set_data(m_lctx.get(), state.data(), state.size()) != state.size()) {
                 throw_ex{} << "Failed to set state";
             }
             co_yield true;
             continue;
-        }
+        } else if (currOp.type == Session::SessionOpData::OpType::Prompt) {
+            auto& prompt = currOp.pendingPrompt;
+            if (!prompt.empty()) {
 
-        auto& prompt = currOp.pendingPrompt;
-        if (!prompt.empty()) {
+                // reset sampling and don't allow previous inputs to affect the generation
+                m_sampler.reset();
 
-            // reset sampling and don't allow previous inputs to affect the generation
-            m_sampler.reset();
+                if (m_model.prefixInputsWithBos()) {
+                    // add bos token to the prompt
+                    doDecode({&tokenBos, 1}, Source::InteractivePrompt);
+                }
 
-            if (m_model.prefixInputsWithBos()) {
-                // add bos token to the prompt
-                doDecode({&tokenBos, 1}, Source::InteractivePrompt);
+                doDecode(prompt, Source::InteractivePrompt);
             }
 
-            doDecode(prompt, Source::InteractivePrompt);
+            auto token = m_sampler.sample(lctx);
+            sessionTokens.push_back(token);
+            if (vocab.isEog(token)) {
+                co_yield Token_Invalid;
+                // don't decode eog tokens in case the the interaction is continued
+            }
+            else {
+                // first yield, then decode, thus we don't decode if the session is aborted
+                co_yield token;
+                doDecode({&token, 1}, Source::Generated);
+            }
+        } else {
+            LLAMA_LOG(Error, "Unrecognized session operation type");
         }
 
-        auto token = m_sampler.sample(lctx);
-        sessionTokens.push_back(token);
-        if (vocab.isEog(token)) {
-            co_yield Token_Invalid;
-            // don't decode eog tokens in case the the interaction is continued
-        }
-        else {
-            // first yield, then decode, thus we don't decode if the session is aborted
-            co_yield token;
-            doDecode({&token, 1}, Source::Generated);
-        }
     }
 }
 

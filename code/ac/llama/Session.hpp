@@ -119,6 +119,7 @@ public:
         }
 
         void getState() {
+            assert(m_pendingOpData.type == SessionOpData::Count);
             m_pendingOpData.type = SessionOpData::GetState;
         }
 
@@ -189,6 +190,7 @@ public:
     std::vector<uint8_t> getState() {
         m_handle.promise().getState();
         m_handle.resume();
+        m_handle.promise().rethrowIfException();
 
         assert(m_handle.promise().value().type == SessionResult::Type::State);
         m_handle.promise().setOpType(SessionOpData::Count);
@@ -199,6 +201,7 @@ public:
     bool setState(std::span<uint8_t> state) {
         m_handle.promise().setState(state);
         m_handle.resume();
+        m_handle.promise().rethrowIfException();
 
         assert(m_handle.promise().value().type == SessionResult::Type::Bool);
         m_handle.promise().setOpType(SessionOpData::Count);
