@@ -180,8 +180,8 @@ public:
         m_handle.resume();
         m_handle.promise().rethrowIfException();
 
-        m_handle.promise().setOpType(SessionOpData::Count);
         assert(m_handle.promise().value().type == SessionResult::Type::Token);
+        m_handle.promise().setOpType(SessionOpData::Count);
 
         return std::move(m_handle.promise().value().token);
     }
@@ -190,8 +190,8 @@ public:
         m_handle.promise().getState();
         m_handle.resume();
 
-        m_handle.promise().setOpType(SessionOpData::Count);
         assert(m_handle.promise().value().type == SessionResult::Type::State);
+        m_handle.promise().setOpType(SessionOpData::Count);
 
         return std::move(m_handle.promise().value().state);
     }
@@ -200,8 +200,8 @@ public:
         m_handle.promise().setState(state);
         m_handle.resume();
 
-        m_handle.promise().setOpType(SessionOpData::Count);
         assert(m_handle.promise().value().type == SessionResult::Type::Bool);
+        m_handle.promise().setOpType(SessionOpData::Count);
 
         return std::move(m_handle.promise().value().result);
     }

@@ -97,7 +97,6 @@ void Instance::warmup() {
 Session Instance::newSession(const SessionParams params) {
     // not a real await as we return suspend_always initially
     auto op = co_await Session::Prompt{};
-    auto& initialPrompt = op.pendingPrompt;
 
     if (m_hasActiveSession) {
         throw_ex{} << "Instance already has an active session";
@@ -115,43 +114,55 @@ Session Instance::newSession(const SessionParams params) {
     m_sampler.perfReset();
 
     std::vector<llama_token> sessionTokens;
-    Token initialToken; // used to reset the initial prompt to a single token
     const auto tokenBos = llama_token_bos(m_model.lmodel());
-
-    if (initialPrompt.empty()) {
-        initialToken = tokenBos;
-        initialPrompt = {&initialToken, 1};
-    }
-
-    if (initialPrompt.empty()) {
-        throw_ex{} << "Empty initial prompt";
-    }
-
     const auto ctxLen = llama_n_ctx(lctx);
     const auto maxTokens = ctxLen - 4; // (#16)
-    if (initialPrompt.size() > maxTokens) {
-        throw_ex{} << "Initial prompt too long. Got " << initialPrompt.size() << " tokens, max: " << ctxLen - 4;
+
+    auto& initialPrompt = op.pendingPrompt;
+    const auto numKeep = std::min(uint32_t(initialPrompt.size()), maxTokens); // number of tokens to keep in the context in case we overflow
+
+    if (op.type != Session::SessionOpData::OpType::Prompt && op.type != Session::SessionOpData::OpType::SetState) {
+        throw_ex{} << "Invalid initial session operation type";
     }
 
-    const auto numKeep = int32_t(initialPrompt.size()); // number of tokens to keep in the context in case we overflow
+    if (op.type == Session::SessionOpData::OpType::Prompt) {
+        Token initialToken; // used to reset the initial prompt to a single token
 
-    if (params.gaFactor != 1) {
-        const uint32_t gaFactor = params.gaFactor;
-        const uint32_t gaWidth = params.gaWidth;
-        if (gaWidth % gaFactor != 0) {
-            throw_ex{} << "Group-attention width " << gaWidth << " must be a multiple of group-attention factor " << gaFactor;
+        if (initialPrompt.empty()) {
+            initialToken = tokenBos;
+            initialPrompt = {&initialToken, 1};
         }
-        LLAMA_LOG(Info, "self-extend: train = ", m_model.trainCtxLength(), ", gaFactor = ", gaFactor, ", gaWidth = ", gaWidth);
-    }
 
-    if (m_model.hasEncoder()) {
-        auto batch = makeInputBatch(initialPrompt);
-        auto res = llama_encode(lctx, batch);
-        if (res != 0) {
-            throw_ex{} << "Failed to encode input";
+        if (initialPrompt.empty()) {
+            throw_ex{} << "Empty initial prompt";
         }
-        initialToken = vocab.decoderStartToken();
-        initialPrompt = {&initialToken, 1};
+
+        if (initialPrompt.size() > maxTokens) {
+            throw_ex{} << "Initial prompt too long. Got " << initialPrompt.size() << " tokens, max: " << ctxLen - 4;
+        }
+
+        if (params.gaFactor != 1) {
+            const uint32_t gaFactor = params.gaFactor;
+            const uint32_t gaWidth = params.gaWidth;
+            if (gaWidth % gaFactor != 0) {
+                throw_ex{} << "Group-attention width " << gaWidth << " must be a multiple of group-attention factor " << gaFactor;
+            }
+            LLAMA_LOG(Info, "self-extend: train = ", m_model.trainCtxLength(), ", gaFactor = ", gaFactor, ", gaWidth = ", gaWidth);
+        }
+
+        if (m_model.hasEncoder()) {
+            auto batch = makeInputBatch(initialPrompt);
+            auto res = llama_encode(lctx, batch);
+            if (res != 0) {
+                throw_ex{} << "Failed to encode input";
+            }
+            initialToken = vocab.decoderStartToken();
+            initialPrompt = {&initialToken, 1};
+        }
+    } else {
+        if (llama_state_set_data(lctx, op.state.data(), op.state.size()) != op.state.size()) {
+            throw_ex{} << "Failed to set state";
+        }
     }
 
     // group attention state
@@ -247,12 +258,15 @@ Session Instance::newSession(const SessionParams params) {
         }
     };
 
-    doDecode(initialPrompt, Source::InitialPrompt);
-    initialPrompt = {}; // clear as after the co_await below the memory may be invalid
+    if (op.type == Session::SessionOpData::OpType::Prompt) {
+        doDecode(initialPrompt, Source::InitialPrompt);
+        initialPrompt = {}; // clear as after the co_await below the memory may be invalid
 
-    co_await Session::StartGeneration{}; // suspend pre generation
-
-    std::string sessionPath;
+        co_await Session::StartGeneration{}; // suspend pre generation
+    } else {
+        // set the state
+        co_yield true;
+    }
 
     while (true) {
         auto currOp = co_await Session::Prompt{};
