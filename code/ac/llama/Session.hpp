@@ -7,7 +7,8 @@
 #include <utility>
 #include <exception>
 #include <coroutine>
-#include <assert.h>
+#include <vector>
+#include <cassert>
 
 namespace ac::llama {
 

@@ -5,6 +5,7 @@
 #include "export.h"
 
 #include <vector>
+#include <string>
 
 namespace ac::llama {
 class Model;
