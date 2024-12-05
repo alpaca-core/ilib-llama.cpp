@@ -35,8 +35,8 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 
 
 Model::Model(std::shared_ptr<llama_model> lmodel, Params params)
-    : m_lmodel(std::move(lmodel))
-    , m_params(astl::move(params))
+    : m_params(astl::move(params))
+    , m_lmodel(std::move(lmodel))
 {}
 
 Model::~Model() = default;
