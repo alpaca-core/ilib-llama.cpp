@@ -24,6 +24,12 @@ public:
         bool gpu = true; // try to load data on gpu
         bool vocabOnly = false; // do not load model, only vocab
         bool prefixInputsWithBos = false; // add bos token to interactive inputs (#13)
+
+        bool operator==(const Params& other) const noexcept {
+            return gpu == other.gpu
+                    && vocabOnly == other.vocabOnly
+                    && prefixInputsWithBos == other.prefixInputsWithBos;
+        }
     };
 
     Model(std::shared_ptr<llama_model> model, Params params);
@@ -78,9 +84,7 @@ private:
 
         bool operator==(const ModelKey& other) const noexcept {
             return gguf == other.gguf
-                    && params.gpu == other.params.gpu
-                    && params.prefixInputsWithBos == other.params.prefixInputsWithBos
-                    && params.vocabOnly == other.params.vocabOnly;
+                    && params == other.params;
         }
     };
 
