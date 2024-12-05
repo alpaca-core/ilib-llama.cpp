@@ -5,13 +5,17 @@
 #include "Model.hpp"
 #include "Logging.hpp"
 #include "Session.hpp"
+
 #include <llama.h>
+
 #include <astl/throw_stdex.hpp>
 #include <astl/iile.h>
 #include <astl/move.hpp>
 #include <astl/sentry.hpp>
+
 #include <cassert>
 #include <span>
+#include <fstream>
 
 namespace ac::llama {
 
@@ -92,11 +96,16 @@ void Instance::warmup() {
 
 Session Instance::newSession(const SessionParams params) {
     // not a real await as we return suspend_always initially
-    auto initialPrompt = co_await Session::Prompt{};
+    auto op = co_await Session::Prompt{};
 
     if (m_hasActiveSession) {
         throw_ex{} << "Instance already has an active session";
     }
+
+    if (op.type != Session::SessionOpData::OpType::Prompt && op.type != Session::SessionOpData::OpType::SetState) {
+        throw_ex{} << "Invalid initial session operation type";
+    }
+
     m_hasActiveSession = true;
     astl::sentry closeSessionSentry([this] { m_hasActiveSession = false; });
 
@@ -109,44 +118,52 @@ Session Instance::newSession(const SessionParams params) {
     m_sampler.reset();
     m_sampler.perfReset();
 
-    Token initialToken; // used to reset the initial prompt to a single token
-
+    std::vector<llama_token> sessionTokens;
     const auto tokenBos = llama_token_bos(m_model.lmodel());
-    if (initialPrompt.empty()) {
-        // Should not run without any tokens
-        initialToken = tokenBos;
-        initialPrompt = {&initialToken, 1};
-    }
-
-    if (initialPrompt.empty()) {
-        throw_ex{} << "Empty initial prompt";
-    }
-
     const auto ctxLen = llama_n_ctx(lctx);
     const auto maxTokens = ctxLen - 4; // (#16)
-    if (initialPrompt.size() > maxTokens) {
-        throw_ex{} << "Initial prompt too long. Got " << initialPrompt.size() << " tokens, max: " << ctxLen - 4;
-    }
+    auto numKeep = llama_get_kv_cache_token_count(lctx);
 
-    const auto numKeep = int32_t(initialPrompt.size()); // number of tokens to keep in the context in case we overflow
+    if (op.type == Session::SessionOpData::OpType::Prompt) {
+        Token initialToken; // used to reset the initial prompt to a single token
+        auto& initialPrompt = op.pendingPrompt;
+        numKeep = std::min(uint32_t(initialPrompt.size()), maxTokens); // number of tokens to keep in the context in case we overflow
 
-    if (params.gaFactor != 1) {
-        const uint32_t gaFactor = params.gaFactor;
-        const uint32_t gaWidth = params.gaWidth;
-        if (gaWidth % gaFactor != 0) {
-            throw_ex{} << "Group-attention width " << gaWidth << " must be a multiple of group-attention factor " << gaFactor;
+        if (initialPrompt.empty()) {
+            initialToken = tokenBos;
+            initialPrompt = {&initialToken, 1};
         }
-        LLAMA_LOG(Info, "self-extend: train = ", m_model.trainCtxLength(), ", gaFactor = ", gaFactor, ", gaWidth = ", gaWidth);
-    }
 
-    if (m_model.hasEncoder()) {
-        auto batch = makeInputBatch(initialPrompt);
-        auto res = llama_encode(lctx, batch);
-        if (res != 0) {
-            throw_ex{} << "Failed to encode input";
+        if (initialPrompt.empty()) {
+            throw_ex{} << "Empty initial prompt";
         }
-        initialToken = vocab.decoderStartToken();
-        initialPrompt = {&initialToken, 1};
+
+        if (initialPrompt.size() > maxTokens) {
+            throw_ex{} << "Initial prompt too long. Got " << initialPrompt.size() << " tokens, max: " << ctxLen - 4;
+        }
+
+        if (params.gaFactor != 1) {
+            const uint32_t gaFactor = params.gaFactor;
+            const uint32_t gaWidth = params.gaWidth;
+            if (gaWidth % gaFactor != 0) {
+                throw_ex{} << "Group-attention width " << gaWidth << " must be a multiple of group-attention factor " << gaFactor;
+            }
+            LLAMA_LOG(Info, "self-extend: train = ", m_model.trainCtxLength(), ", gaFactor = ", gaFactor, ", gaWidth = ", gaWidth);
+        }
+
+        if (m_model.hasEncoder()) {
+            auto batch = makeInputBatch(initialPrompt);
+            auto res = llama_encode(lctx, batch);
+            if (res != 0) {
+                throw_ex{} << "Failed to encode input";
+            }
+            initialToken = vocab.decoderStartToken();
+            initialPrompt = {&initialToken, 1};
+        }
+    } else {
+        if (llama_state_set_data(lctx, op.state.data(), op.state.size()) != op.state.size()) {
+            throw_ex{} << "Failed to set state";
+        }
     }
 
     // group attention state
@@ -242,36 +259,64 @@ Session Instance::newSession(const SessionParams params) {
         }
     };
 
-    doDecode(initialPrompt, Source::InitialPrompt);
-    initialPrompt = {}; // clear as after the co_await below the memory may be invalid
+    if (op.type == Session::SessionOpData::OpType::Prompt) {
+        doDecode(op.pendingPrompt, Source::InitialPrompt);
 
-    co_await Session::StartGeneration{}; // suspend pre generation
+        co_await Session::StartGeneration{}; // suspend pre generation
+    } else {
+        // set the state
+        co_yield true;
+    }
 
     while (true) {
-        auto prompt = co_await Session::Prompt{};
-        if (!prompt.empty()) {
+        auto currOp = co_await Session::Prompt{};
 
-            // reset sampling and don't allow previous inputs to affect the generation
-            m_sampler.reset();
+        if (currOp.type == Session::SessionOpData::OpType::GetState) {
+            // get the state
+            const auto size = llama_state_get_size(m_lctx.get());
+            std::vector<uint8_t> state(size);
+            if (llama_state_get_data(m_lctx.get(), state.data(), size) != size) {
+                throw_ex{} << "Failed to get state";
+            }
+            co_yield state;
+            continue;
+        } else if (currOp.type == Session::SessionOpData::OpType::SetState) {
+            auto& state = currOp.state;
+            if (llama_state_set_data(m_lctx.get(), state.data(), state.size()) != state.size()) {
+                throw_ex{} << "Failed to set state";
+            }
+            co_yield true;
+            continue;
+        } else if (currOp.type == Session::SessionOpData::OpType::Prompt) {
+            auto& prompt = currOp.pendingPrompt;
+            if (!prompt.empty()) {
 
-            if (m_model.prefixInputsWithBos()) {
-                // add bos token to the prompt
-                doDecode({&tokenBos, 1}, Source::InteractivePrompt);
+                // reset sampling and don't allow previous inputs to affect the generation
+                m_sampler.reset();
+
+                if (m_model.prefixInputsWithBos()) {
+                    // add bos token to the prompt
+                    doDecode({&tokenBos, 1}, Source::InteractivePrompt);
+                }
+
+                doDecode(prompt, Source::InteractivePrompt);
             }
 
-            doDecode(prompt, Source::InteractivePrompt);
+            auto token = m_sampler.sample(lctx);
+            sessionTokens.push_back(token);
+            if (vocab.isEog(token)) {
+                co_yield Token_Invalid;
+                // don't decode eog tokens in case the the interaction is continued
+            }
+            else {
+                // first yield, then decode, thus we don't decode if the session is aborted
+                co_yield token;
+                doDecode({&token, 1}, Source::Generated);
+            }
+        } else {
+            LLAMA_LOG(Error, "Unrecognized session operation type");
         }
 
-        auto token = m_sampler.sample(lctx);
-        if (vocab.isEog(token)) {
-            co_yield Token_Invalid;
-            // don't decode eog tokens in case the the interaction is continued
-        }
-        else {
-            // first yield, then decode, thus we don't decode if the session is aborted
-            co_yield token;
-            doDecode({&token, 1}, Source::Generated);
-        }
     }
 }
 

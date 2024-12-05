@@ -80,3 +80,115 @@ TEST_CASE("inference") {
         }
     }
 }
+
+TEST_CASE("session states") {
+    ac::llama::Model model(Model_117m_q6_k, {}, {});
+    CHECK(!!model.lmodel());
+
+    auto& params = model.params();
+    CHECK(params.gpu);
+    CHECK_FALSE(params.vocabOnly);
+
+    CHECK(model.trainCtxLength() == 1024);
+    CHECK_FALSE(model.shouldAddBosToken());
+    CHECK_FALSE(model.hasEncoder());
+
+    ac::llama::Instance inst(model, {});
+    inst.warmup(); // should be safe
+
+    const uint32_t nPredict = 30;
+
+    std::vector<uint8_t> initialState;
+    std::vector<uint8_t> sessionMiddleState;
+
+    std::string prompt = "France has a long history of";
+    std::string generatedStr;
+    std::string generatedStr2;
+
+    // create an original session which we'll use to store states
+    {
+        // session 1
+
+        auto s = inst.newSession({});
+        auto tokens = model.vocab().tokenize(prompt, true, true);
+        s.setInitialPrompt(tokens);
+
+        // save the initial state
+        initialState = s.getState();
+
+        for (size_t i = 0; i < nPredict; i++) {
+            auto t = s.getToken();
+            REQUIRE(t != ac::llama::Token_Invalid);
+            auto text = model.vocab().tokenToString(t);
+            generatedStr += text;
+
+            if (i == nPredict / 2) {
+                // save state after half of the tokens are generated
+                sessionMiddleState = s.getState();
+            }
+
+            if (i > nPredict / 2) {
+                // save generated string after after we've saved the state
+                generatedStr2 += text;
+            }
+        }
+    }
+
+    // test restoring the intial state
+    // since the sampler is in the initial state we should get the same string
+    {
+        auto s = inst.newSession({});
+        s.setState(initialState);
+        std::string restoredStr;
+
+        for (size_t i = 0; i < nPredict; i++) {
+            auto t = s.getToken();
+            REQUIRE(t != ac::llama::Token_Invalid);
+            auto text = model.vocab().tokenToString(t);
+            restoredStr += text;
+        }
+
+        CHECK(restoredStr == generatedStr);
+    }
+
+    // Test restoring the middle state
+    // In the middle state the sampler's RNG was not in the initial state, so
+    // we should get a different string
+    // However, the string should be the same for each session we start from that state
+    {
+        //restores session 1
+        std::string restoredStr;
+        {
+            auto s = inst.newSession({});
+            s.setState(sessionMiddleState);
+
+            for (size_t i = 0; i < nPredict / 2; i++) {
+                auto t = s.getToken();
+                REQUIRE(t != ac::llama::Token_Invalid);
+                auto text = model.vocab().tokenToString(t);
+                restoredStr += text;
+            }
+        }
+
+        // Test that it's not the same as original due to samplers RNG state
+        CHECK(restoredStr != generatedStr2);
+
+        //restores session 2
+        std::string restoredStr2;
+        {
+            auto s = inst.newSession({});
+            s.setState(sessionMiddleState);
+
+            for (size_t i = 0; i < nPredict / 2; i++) {
+                auto t = s.getToken();
+                REQUIRE(t != ac::llama::Token_Invalid);
+                auto text = model.vocab().tokenToString(t);
+                restoredStr2 += text;
+            }
+
+            // Test that each session started from the same state produces the same string
+            CHECK(restoredStr == restoredStr2);
+        }
+    }
+
+}

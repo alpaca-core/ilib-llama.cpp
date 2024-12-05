@@ -7,6 +7,7 @@
 #include <utility>
 #include <exception>
 #include <coroutine>
+#include <assert.h>
 
 namespace ac::llama {
 
@@ -15,10 +16,38 @@ public:
     struct Prompt {}; // sentinel for co_await-int prompts
     struct StartGeneration {}; // sentinel for co_await-ing the start of generation
 
-    class promise_type {
-        Token m_value = Token_Invalid;
+    struct SessionOpData {
+        enum OpType {
+            Prompt,
+            GetState,
+            SetState,
 
-        std::span<const Token> m_pendingPrompt;
+            Count
+        };
+        OpType type = Count;
+
+        std::span<const Token> pendingPrompt;
+        std::span<uint8_t> state;
+    };
+
+    struct SessionResult {
+        enum class Type {
+            Token,
+            State,
+            Bool,
+            Invalid
+        };
+
+        Type type = Type::Invalid;
+        Token token = Token_Invalid;
+        std::vector<uint8_t> state;
+        bool result = false;
+    };
+
+    class promise_type {
+        SessionResult m_value;
+
+        SessionOpData m_pendingOpData;
 
         std::exception_ptr m_exception;
     public:
@@ -26,7 +55,7 @@ public:
             return Session{std::coroutine_handle<promise_type>::from_promise(*this)};
         }
 
-        Token value() const noexcept { return m_value; }
+        SessionResult value() const noexcept { return m_value; }
 
         // suspend until the initial prompt is set
         std::suspend_always initial_suspend() noexcept { return {}; }
@@ -35,12 +64,25 @@ public:
         std::suspend_always final_suspend() noexcept { return {}; }
 
         std::suspend_always yield_value(Token value) noexcept {
-            m_value = value;
+            m_value.type = SessionResult::Type::Token;
+            m_value.token = value;
+            return {};
+        }
+
+        std::suspend_always yield_value(std::vector<uint8_t>& stateData) noexcept {
+            m_value.type = SessionResult::Type::State;
+            m_value.state = std::move(stateData);
+            return {};
+        }
+
+        std::suspend_always yield_value(bool result) noexcept {
+            m_value.type = SessionResult::Type::Bool;
+            m_value.result = result;
             return {};
         }
 
         void return_void() noexcept {
-            m_value = Token_Invalid;
+            m_value.type = SessionResult::Type::Invalid;
         }
         void unhandled_exception() noexcept {
             // why store the exception here instead of simply rethrowing?
@@ -53,15 +95,32 @@ public:
         struct Awaiter {
             promise_type& self;
             bool await_ready() noexcept { return true; }
-            std::span<const Token> await_resume() noexcept {
+            SessionOpData await_resume() noexcept {
                 // clear pending after returning it
-                return std::exchange(self.m_pendingPrompt, std::span<const Token>{});
+                return std::exchange(self.m_pendingOpData, SessionOpData());
             }
             void await_suspend(std::coroutine_handle<>) noexcept {}
         };
 
+        void setOpType(SessionOpData::OpType type) {
+            m_pendingOpData.type = type;
+        }
+
         void setPrompt(std::span<const Token> prompt) {
-            m_pendingPrompt = prompt;
+            assert(m_pendingOpData.type == SessionOpData::Count);
+            m_pendingOpData.type = SessionOpData::Prompt;
+            m_pendingOpData.pendingPrompt = prompt;
+        }
+
+        void setState(std::span<uint8_t> state) {
+            assert(m_pendingOpData.type == SessionOpData::Count);
+            m_pendingOpData.type = SessionOpData::SetState;
+            m_pendingOpData.state = state;
+        }
+
+        void getState() {
+            assert(m_pendingOpData.type == SessionOpData::Count);
+            m_pendingOpData.type = SessionOpData::GetState;
         }
 
         Awaiter await_transform(Prompt) noexcept { return Awaiter{*this}; }
@@ -118,9 +177,36 @@ public:
 
     Token getToken() {
         if (m_handle.done()) return Token_Invalid;
+        m_handle.promise().setOpType(SessionOpData::Prompt);
         m_handle.resume();
         m_handle.promise().rethrowIfException();
-        return std::move(m_handle.promise().value());
+
+        assert(m_handle.promise().value().type == SessionResult::Type::Token);
+        m_handle.promise().setOpType(SessionOpData::Count);
+
+        return std::move(m_handle.promise().value().token);
+    }
+
+    std::vector<uint8_t> getState() {
+        m_handle.promise().getState();
+        m_handle.resume();
+        m_handle.promise().rethrowIfException();
+
+        assert(m_handle.promise().value().type == SessionResult::Type::State);
+        m_handle.promise().setOpType(SessionOpData::Count);
+
+        return std::move(m_handle.promise().value().state);
+    }
+
+    bool setState(std::span<uint8_t> state) {
+        m_handle.promise().setState(state);
+        m_handle.resume();
+        m_handle.promise().rethrowIfException();
+
+        assert(m_handle.promise().value().type == SessionResult::Type::Bool);
+        m_handle.promise().setOpType(SessionOpData::Count);
+
+        return std::move(m_handle.promise().value().result);
     }
 
 private:
