@@ -87,7 +87,9 @@ TEST_CASE("inference") {
 }
 
 TEST_CASE("session states") {
-    ac::llama::Model model(Model_117m_q6_k, {}, {});
+    ac::llama::Model::Params iParams = {};
+    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(Model_117m_q6_k, {}, iParams);
+    ac::llama::Model model(lmodel, iParams);
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
@@ -137,7 +139,9 @@ TEST_CASE("session states") {
 }
 
 TEST_CASE("control_vector") {
-    ac::llama::Model model(Model_117m_q6_k, {}, {});
+    ac::llama::Model::Params iParams = {};
+    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(Model_117m_q6_k, {}, iParams);
+    ac::llama::Model model(lmodel, iParams);
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
