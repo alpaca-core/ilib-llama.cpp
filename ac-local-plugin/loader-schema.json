@@ -1,0 +1,131 @@
+{
+  "id": "llama.cpp",
+  "description": "Inference based on our fork of https://github.com/ggerganov/llama.cpp",
+  "params": {
+    "type": "null"
+  },
+  "instances": {
+    "general": {
+      "description": "General instance",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ctx_size": {
+            "type": "integer",
+            "description": "Size of the context"
+          },
+          "batch_size": {
+            "type": "integer",
+            "description": "Size of the single batch"
+          },
+          "ubatch_size": {
+            "type": "integer",
+            "description": "Size of the context"
+          }
+        }
+      },
+      "ops": {
+        "run": {
+          "description": "Run the llama.cpp inference and produce some output",
+          "params": {
+            "type": "object",
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "description": "Prompt to complete"
+              },
+              "antiprompts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Antiprompts to trigger stop",
+                "default": []
+              },
+              "max_tokens": {
+                "type": "integer",
+                "description": "Maximum number of tokens to generate. 0 for unlimited",
+                "default": 0
+              }
+            },
+            "required": [
+              "prompt"
+            ]
+          },
+          "return": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "string",
+                "description": "Generated result (completion of prompt)"
+              }
+            },
+            "required": [
+              "result"
+            ]
+          }
+        },
+        "begin-chat": {
+          "description": "Begin a chat session",
+          "params": {
+            "type": "object",
+            "properties": {
+              "setup": {
+                "type": "string",
+                "description": "Initial setup for the chat session",
+                "default": ""
+              },
+              "role_user": {
+                "type": "string",
+                "description": "Role name for the user",
+                "default": "User"
+              },
+              "role_assistant": {
+                "type": "string",
+                "description": "Role name for the assistant",
+                "default": "Assistant"
+              }
+            }
+          },
+          "return": {
+            "type": "null"
+          }
+        },
+        "add-chat-prompt": {
+          "description": "Add a prompt to the chat session as a user",
+          "params": {
+            "type": "object",
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "description": "Prompt to add to the chat session",
+                "default": ""
+              }
+            }
+          },
+          "return": {
+            "type": "null"
+          }
+        },
+        "get-chat-response": {
+          "description": "Get a response from the chat session",
+          "params": {
+            "type": "null"
+          },
+          "return": {
+            "type": "object",
+            "properties": {
+              "response": {
+                "type": "string",
+                "description": "Response from the chat session"
+              }
+            },
+            "required": [
+              "response"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
