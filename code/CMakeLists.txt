@@ -28,6 +28,7 @@ target_sources(ac-llama PRIVATE
     ac/llama/Instance.hpp
     ac/llama/Instance.cpp
     ac/llama/Session.hpp
+    ac/llama/Session.cpp
     ac/llama/AntipromptManager.hpp
     ac/llama/AntipromptManager.cpp
     ac/llama/IncrementalStringFinder.hpp

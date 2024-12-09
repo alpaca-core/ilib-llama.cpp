@@ -74,7 +74,7 @@ public:
 
             class Session {
             public:
-                Session(ac::llama::Instance& instance, std::string_view prompt, std::vector<std::string> antiprompts, ac::llama::Instance::SessionParams params)
+                Session(ac::llama::Instance& instance, std::string_view prompt, std::vector<std::string> antiprompts, ac::llama::Session::InitParams params)
                     : m_vocab(instance.model().vocab())
                     , m_params(std::move(params))
                     , m_text(std::move(prompt))
@@ -88,7 +88,7 @@ public:
                 }
 
                 const std::string& text() const { return m_text; }
-                const ac::llama::Instance::SessionParams& params() const { return m_params; }
+                const ac::llama::Session::InitParams& params() const { return m_params; }
 
                 void update() {
                     if (!m_numTokens) return;
@@ -124,7 +124,7 @@ public:
 
             private:
                 const ac::llama::Vocab& m_vocab;
-                ac::llama::Instance::SessionParams m_params;
+                ac::llama::Session::InitParams m_params;
                 std::vector<ac::llama::Token> m_promptTokens;
                 std::string m_text;
                 ac::llama::Session m_session;
@@ -135,7 +135,7 @@ public:
             const std::string& name() const { return m_name; }
             Session* session() { return m_session.get(); }
 
-            void startSession(std::string_view prompt, std::vector<std::string> antiprompts, ac::llama::Instance::SessionParams params) {
+            void startSession(std::string_view prompt, std::vector<std::string> antiprompts, ac::llama::Session::InitParams params) {
                 m_session.reset(new Session(m_instance, prompt, antiprompts, params));
             }
 
@@ -207,7 +207,7 @@ int main(int, char**) try { // this signature is required by SDL
     UModel::State::Instance* selectedInstance = nullptr;
 
     ac::llama::Instance::InitParams newInstanceParams;
-    ac::llama::Instance::SessionParams newSessionParams;
+    ac::llama::Session::InitParams newSessionParams;
 
     std::string initialPrompt;
     std::string additionalPrompt;
