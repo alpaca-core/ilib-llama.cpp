@@ -35,27 +35,27 @@ Session::Session(Instance& instance, InitParams params)
     sampler.perfReset();
 
     const auto ctxLen = llama_n_ctx(lctx);
-    maxTokens = ctxLen - 4; // (#16)
+    m_state.maxTokens = ctxLen - 4; // (#16)
 }
 
 void Session::setInitialPrompt(std::span<const Token> initialPrompt) {
+    if (m_state.m_phase != State::Phase::Initial) {
+        throw_ex{} << "Session already started";
+    }
+
     Token initialToken; // used to reset the initial prompt to a single token
 
     auto lctx = m_instance.ctx();
     const auto ctxLen = llama_n_ctx(lctx);
     const auto tokenBos = llama_token_bos(m_instance.model().lmodel());
-    numKeep = std::min(uint32_t(initialPrompt.size()), maxTokens); // number of tokens to keep in the context in case we overflow
+    m_state.numKeep = std::min(uint32_t(initialPrompt.size()), m_state.maxTokens); // number of tokens to keep in the context in case we overflow
 
     if (initialPrompt.empty()) {
         initialToken = tokenBos;
         initialPrompt = {&initialToken, 1};
     }
 
-    if (initialPrompt.empty()) {
-        throw_ex{} << "Empty initial prompt";
-    }
-
-    if (initialPrompt.size() > maxTokens) {
+    if (initialPrompt.size() > m_state.maxTokens) {
         throw_ex{} << "Initial prompt too long. Got " << initialPrompt.size() << " tokens, max: " << ctxLen - 4;
     }
 
@@ -83,6 +83,10 @@ void Session::setInitialPrompt(std::span<const Token> initialPrompt) {
 }
 
 void Session::pushPrompt(std::span<const Token> prompt) {
+    if (m_state.m_phase != State::Phase::Generating) {
+        throw_ex{} << "Session hasn't started yet";
+    }
+
     if (!prompt.empty()) {
         auto& sampler = m_instance.sampler();
         auto& model = m_instance.model();
@@ -101,23 +105,33 @@ void Session::pushPrompt(std::span<const Token> prompt) {
 }
 
 Token Session::getToken() {
+    if (m_state.m_phase != State::Phase::Generating) {
+        throw_ex{} << "Session hasn't started yet";
+    }
+
+    if (m_state.m_currToken != Token_Invalid) {
+        // first yield, then decode, thus we don't decode if the session is aborted
+        doDecode({&m_state.m_currToken, 1}, Source::Generated);
+    }
+
     auto& sampler = m_instance.sampler();
     auto& vocab = m_instance.model().vocab();
 
-    auto token = sampler.sample(m_instance.ctx());
+    m_state.m_currToken = sampler.sample(m_instance.ctx());
 
-    if (vocab.isEog(token)) {
-        return Token_Invalid;
+    if (vocab.isEog(m_state.m_currToken)) {
         // don't decode eog tokens in case the the interaction is continued
+        m_state.m_currToken = Token_Invalid;
     }
 
-    // old-comment
-    // first yield, then decode, thus we don't decode if the session is aborted
-    doDecode({&token, 1}, Source::Generated);
-    return token;
+    return m_state.m_currToken;
 }
 
 std::vector<uint8_t> Session::getState() {
+    if (m_state.m_phase != State::Phase::Generating) {
+        throw_ex{} << "Session hasn't started yet";
+    }
+
     const auto size = llama_state_get_size(m_instance.ctx());
     std::vector<uint8_t> state(size);
     if (llama_state_get_data(m_instance.ctx(), state.data(), size) != size) {
@@ -127,6 +141,10 @@ std::vector<uint8_t> Session::getState() {
 }
 
 bool Session::setState(std::span<uint8_t> state) {
+    if (m_state.m_phase != State::Phase::Initial) {
+        throw_ex{} << "Session already started";
+    }
+
     if (llama_state_set_data(m_instance.ctx(), state.data(), state.size()) != state.size()) {
         throw_ex{} << "Failed to set state";
     }
@@ -141,9 +159,9 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
     auto& sampler = m_instance.sampler();
 
     // Ensure the input doesn't exceed the context size by truncating embd if necessary.
-    if (tokens.size() > maxTokens) {
-        const auto skipped = tokens.size() - maxTokens;
-        tokens = tokens.first(maxTokens);
+    if (tokens.size() > m_state.maxTokens) {
+        const auto skipped = tokens.size() - m_state.maxTokens;
+        tokens = tokens.first(m_state.maxTokens);
         LLAMA_LOG(Warning, "Input too long. Skipping ", skipped, " tokens");
     }
 
@@ -153,49 +171,49 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
         // if we run out of context:
         // - take the n_keep first tokens from the original prompt (via numPast)
         // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in batches
-        const auto num = numPast + tokens.size();
+        const auto num = m_state.numPast + tokens.size();
         if (num >= ctxLen) {
             if (!m_params.infiniteContext) {
                 throw_ex{} << "context limit of " << ctxLen << " reached";
             }
 
-            const auto numLeft = numPast - numKeep;
+            const auto numLeft = m_state.numPast - m_state.numKeep;
             const int numDiscard = numLeft / 2; // somewhat arbitrary
 
-            LLAMA_LOG(Debug, "Context is full. Swapping: past = ", numPast, ", numLeft: ", numLeft,
-                ", ctxLen: ", ctxLen, ", numKeep: ", numKeep, ", numDiscard: ", numDiscard);
+            LLAMA_LOG(Debug, "Context is full. Swapping: past = ", m_state.numPast, ", numLeft: ", numLeft,
+                ", ctxLen: ", ctxLen, ", numKeep: ", m_state.numKeep, ", numDiscard: ", numDiscard);
 
-            llama_kv_cache_seq_rm(lctx, 0, numKeep, numKeep + numDiscard);
-            llama_kv_cache_seq_add(lctx, 0, numKeep + numDiscard, numPast, -numDiscard);
+            llama_kv_cache_seq_rm(lctx, 0, m_state.numKeep, m_state.numKeep + numDiscard);
+            llama_kv_cache_seq_add(lctx, 0, m_state.numKeep + numDiscard, m_state.numPast, -numDiscard);
 
-            numPast -= numDiscard;
+            m_state.numPast -= numDiscard;
             haveFullContextMitigation = true;
         }
     }
     else {
         const uint32_t gaWidth = m_params.gaWidth;
 
-        while (numPast >= gaIndex + gaWidth) {
+        while (m_state.numPast >= m_state.gaIndex + gaWidth) {
             // context extension via Self-Extend
-            const int ib = (gaFactor * gaIndex) / gaWidth;
+            const int ib = (gaFactor * m_state.gaIndex) / gaWidth;
             const int bd = (gaWidth / gaFactor) * (gaFactor - 1);
             const int dd = (gaWidth / gaFactor) - ib * bd - gaWidth;
 
             LLAMA_LOG(Debug, "Group attention shift: ib = ", ib, ", bd = ", bd, ", dd = ", dd);
 
-            llama_kv_cache_seq_add(lctx, 0, gaIndex, numPast, ib * bd);
-            llama_kv_cache_seq_div(lctx, 0, gaIndex + ib * bd, gaIndex + ib * bd + gaWidth, gaFactor);
-            llama_kv_cache_seq_add(lctx, 0, gaIndex + ib * bd + gaWidth, numPast + ib * bd, dd);
+            llama_kv_cache_seq_add(lctx, 0, m_state.gaIndex, m_state.numPast, ib * bd);
+            llama_kv_cache_seq_div(lctx, 0, m_state.gaIndex + ib * bd, m_state.gaIndex + ib * bd + gaWidth, gaFactor);
+            llama_kv_cache_seq_add(lctx, 0, m_state.gaIndex + ib * bd + gaWidth, m_state.numPast + ib * bd, dd);
 
-            numPast -= bd;
+            m_state.numPast -= bd;
 
-            gaIndex += gaWidth / gaFactor;
+            m_state.gaIndex += gaWidth / gaFactor;
             haveFullContextMitigation = true;
         }
     }
 
     if (haveFullContextMitigation) {
-        LLAMA_LOG(Info, "Context full mitigation performed: past = ", numPast, ", tokens = ", tokens.size());
+        LLAMA_LOG(Info, "Context full mitigation performed: past = ", m_state.numPast, ", tokens = ", tokens.size());
     }
 
     // add to sampler
@@ -215,7 +233,7 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
         if (llama_decode(lctx, batch) != 0) {
             throw_ex{} << "Failed to decode tokens";
         }
-        numPast += uint32_t(batchTokens.size());
+        m_state.numPast += uint32_t(batchTokens.size());
     }
 
 }
