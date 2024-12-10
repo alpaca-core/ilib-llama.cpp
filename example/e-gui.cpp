@@ -75,16 +75,21 @@ public:
             class Session {
             public:
                 Session(ac::llama::Instance& instance, std::string_view prompt, std::vector<std::string> antiprompts, ac::llama::Session::InitParams params)
-                    : m_vocab(instance.model().vocab())
+                    : m_instance(instance)
+                    , m_vocab(instance.model().vocab())
                     , m_params(std::move(params))
                     , m_text(std::move(prompt))
-                    , m_session(instance.newSession(m_params))
+                    , m_session(instance.startSession(m_params))
                 {
                     m_promptTokens = m_vocab.tokenize(m_text, true, true);
                     m_session.setInitialPrompt(m_promptTokens);
                     for (const auto& ap : antiprompts) {
                         m_antiprompt.addAntiprompt(ap);
                     }
+                }
+
+                ~Session() {
+                    m_instance.stopSession();
                 }
 
                 const std::string& text() const { return m_text; }
@@ -123,6 +128,7 @@ public:
                 }
 
             private:
+                ac::llama::Instance& m_instance;
                 const ac::llama::Vocab& m_vocab;
                 ac::llama::Session::InitParams m_params;
                 std::vector<ac::llama::Token> m_promptTokens;

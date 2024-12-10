@@ -116,9 +116,12 @@ void Instance::warmup() {
     llama_perf_context_reset(lctx);
 }
 
-Session Instance::newSession(const Session::InitParams params) {
-    // not a real await as we return suspend_always initially
-    return Session(*this, params);
+Session& Instance::startSession(const Session::InitParams params) {
+    if (!m_session) {
+        m_session.reset(new Session(*this, m_lctx.get(), params));
+    }
+
+    return *m_session;
 }
 
 } // namespace ac::llama
