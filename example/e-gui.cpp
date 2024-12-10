@@ -133,7 +133,7 @@ public:
                 ac::llama::Session::InitParams m_params;
                 std::vector<ac::llama::Token> m_promptTokens;
                 std::string m_text;
-                ac::llama::Session m_session;
+                ac::llama::Session& m_session;
                 ac::llama::AntipromptManager m_antiprompt;
                 uint32_t m_numTokens = 0;
             };

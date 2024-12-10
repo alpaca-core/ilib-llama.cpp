@@ -117,10 +117,11 @@ void Instance::warmup() {
 }
 
 Session& Instance::startSession(const Session::InitParams params) {
-    if (!m_session) {
-        m_session.reset(new Session(*this, m_lctx.get(), params));
+    if (m_session) {
+        throw_ex{} << "Session is already started. Stop it to start a new one.";
     }
 
+    m_session.reset(new Session(*this, m_lctx.get(), params));
     return *m_session;
 }
 

@@ -28,7 +28,7 @@ namespace ac::local {
 
 namespace {
 class ChatSession {
-    llama::Session m_session;
+    llama::Session& m_session;
     const llama::Vocab& m_vocab;
     std::string m_userPrefix;
     std::string m_assistantPrefix;
@@ -149,7 +149,7 @@ public:
         auto& prompt = params.prompt.value();
         const auto maxTokens = params.maxTokens.value();
 
-        auto s = m_instance.startSession({});
+        auto& s = m_instance.startSession({});
 
         auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
         s.setInitialPrompt(promptTokens);

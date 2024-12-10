@@ -26,13 +26,18 @@ public:
         bool infiniteContext = true;
     };
     Session(Instance& instance, llama_context* ctx, InitParams params);
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+    ~Session() = default;
 
+    // initial functions to prepare the session
     void setInitialPrompt(std::span<const Token> prompt);
+    bool setState(std::span<uint8_t> state);
 
+    // main functions to interact with the model
     void pushPrompt(std::span<const Token> prompt);
     Token getToken();
     std::vector<uint8_t> getState();
-    bool setState(std::span<uint8_t> state);
 private:
     enum class Source {
         InitialPrompt,
@@ -41,6 +46,7 @@ private:
     };
 
     void doDecode(std::span<const Token> tokens, Source src);
+    void flushPendingState();
 
     struct State {
         enum class Phase {
