@@ -40,12 +40,24 @@ private:
 
     void doDecode(std::span<const Token> tokens, Source src);
 
+    struct State {
+        enum class Phase {
+            Initial,
+            Generating
+        };
+
+        Phase m_phase = Phase::Initial;
+        Token m_currToken = Token_Invalid;
+
+        unsigned maxTokens = 0;
+        unsigned numKeep = 0;
+        uint32_t gaIndex = 0; // number of grouped KV tokens (only used if params.gaFactor > 1)
+        uint32_t numPast = 0; // number of tokens in the context (that's prompts + generated)
+    };
+
     Instance& m_instance;
     InitParams m_params;
-    unsigned maxTokens = 0;
-    unsigned numKeep = 0;
-    uint32_t gaIndex = 0; // number of grouped KV tokens (only used if params.gaFactor > 1)
-    uint32_t numPast = 0; // number of tokens in the context (that's prompts + generated)
+    State m_state;
 };
 
 } // namespace ac::llama
