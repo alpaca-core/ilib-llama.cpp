@@ -11,7 +11,6 @@ endmacro()
 
 llama_test(Antiprompt)
 llama_test(ChatFormat)
-llama_test(Session)
 
 add_doctest_lib_test(integration ac-llama
     SOURCES

@@ -74,11 +74,12 @@ public:
 
             class Session {
             public:
-                Session(ac::llama::Instance& instance, std::string_view prompt, std::vector<std::string> antiprompts, ac::llama::Instance::SessionParams params)
-                    : m_vocab(instance.model().vocab())
+                Session(ac::llama::Instance& instance, std::string_view prompt, std::vector<std::string> antiprompts, ac::llama::Session::InitParams params)
+                    : m_instance(instance)
+                    , m_vocab(instance.model().vocab())
                     , m_params(std::move(params))
                     , m_text(std::move(prompt))
-                    , m_session(instance.newSession(m_params))
+                    , m_session(instance.startSession(m_params))
                 {
                     m_promptTokens = m_vocab.tokenize(m_text, true, true);
                     m_session.setInitialPrompt(m_promptTokens);
@@ -87,8 +88,12 @@ public:
                     }
                 }
 
+                ~Session() {
+                    m_instance.stopSession();
+                }
+
                 const std::string& text() const { return m_text; }
-                const ac::llama::Instance::SessionParams& params() const { return m_params; }
+                const ac::llama::Session::InitParams& params() const { return m_params; }
 
                 void update() {
                     if (!m_numTokens) return;
@@ -123,11 +128,12 @@ public:
                 }
 
             private:
+                ac::llama::Instance& m_instance;
                 const ac::llama::Vocab& m_vocab;
-                ac::llama::Instance::SessionParams m_params;
+                ac::llama::Session::InitParams m_params;
                 std::vector<ac::llama::Token> m_promptTokens;
                 std::string m_text;
-                ac::llama::Session m_session;
+                ac::llama::Session& m_session;
                 ac::llama::AntipromptManager m_antiprompt;
                 uint32_t m_numTokens = 0;
             };
@@ -135,7 +141,7 @@ public:
             const std::string& name() const { return m_name; }
             Session* session() { return m_session.get(); }
 
-            void startSession(std::string_view prompt, std::vector<std::string> antiprompts, ac::llama::Instance::SessionParams params) {
+            void startSession(std::string_view prompt, std::vector<std::string> antiprompts, ac::llama::Session::InitParams params) {
                 m_session.reset(new Session(m_instance, prompt, antiprompts, params));
             }
 
@@ -207,7 +213,7 @@ int main(int, char**) try { // this signature is required by SDL
     UModel::State::Instance* selectedInstance = nullptr;
 
     ac::llama::Instance::InitParams newInstanceParams;
-    ac::llama::Instance::SessionParams newSessionParams;
+    ac::llama::Session::InitParams newSessionParams;
 
     std::string initialPrompt;
     std::string additionalPrompt;

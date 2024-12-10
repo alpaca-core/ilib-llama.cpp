@@ -4,6 +4,7 @@
 #pragma once
 #include "export.h"
 #include "Sampler.hpp"
+#include "Session.hpp"
 #include <astl/mem_ext.hpp>
 
 struct llama_context;
@@ -32,27 +33,18 @@ public:
     // do an empty model run to load model data in cache
     void warmup();
 
-    struct SessionParams {
-        uint32_t gaFactor = 1; // group-attention factor
-        uint32_t gaWidth = 512; // group-attention width
-
-        // if true, the inference tries to extend the context by truncating previous tokens
-        // only used if gaFactor == 1
-        bool infiniteContext = true;
-    };
-
     // only one session per instance can be active at a time
-    Session newSession(const SessionParams params);
+    Session& startSession(const Session::InitParams params);
+    void stopSession() noexcept { m_session.reset(); }
 
     const Model& model() const noexcept { return m_model; }
-    const Sampler& sampler() const noexcept { return m_sampler; }
+    Sampler& sampler() noexcept { return m_sampler; }
 
 private:
     Model& m_model;
     Sampler m_sampler;
     astl::c_unique_ptr<llama_context> m_lctx;
-
-    bool m_hasActiveSession = false;
+    std::unique_ptr<Session> m_session;
 };
 
 } // namespace ac::llama
