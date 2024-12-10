@@ -34,18 +34,17 @@ public:
     void warmup();
 
     // only one session per instance can be active at a time
-    Session newSession(const Session::InitParams params);
+    Session& startSession(const Session::InitParams params);
+    void stopSession() noexcept { m_session.reset(); }
 
     const Model& model() const noexcept { return m_model; }
-    llama_context* ctx() const noexcept { return m_lctx.get(); }
     Sampler& sampler() noexcept { return m_sampler; }
 
 private:
     Model& m_model;
     Sampler m_sampler;
     astl::c_unique_ptr<llama_context> m_lctx;
-
-    bool m_hasActiveSession = false;
+    std::unique_ptr<Session> m_session;
 };
 
 } // namespace ac::llama

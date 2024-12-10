@@ -21,20 +21,20 @@ llama_batch makeInputBatch(std::span<const Token> tokens) {
 }
 }
 
-Session::Session(Instance& instance, InitParams params)
+Session::Session(Instance& instance, llama_context* ctx, InitParams params)
     : m_instance(instance)
+    , m_ctx(ctx)
     , m_params(std::move(params))
 {
-    auto lctx = m_instance.ctx();
     auto& sampler = m_instance.sampler();
 
-    llama_kv_cache_clear(lctx);
-    llama_synchronize(lctx);
-    llama_perf_context_reset(lctx);
+    llama_kv_cache_clear(m_ctx);
+    llama_synchronize(m_ctx);
+    llama_perf_context_reset(m_ctx);
     sampler.reset();
     sampler.perfReset();
 
-    const auto ctxLen = llama_n_ctx(lctx);
+    const auto ctxLen = llama_n_ctx(m_ctx);
     m_state.maxTokens = ctxLen - 4; // (#16)
 }
 
@@ -45,8 +45,7 @@ void Session::setInitialPrompt(std::span<const Token> initialPrompt) {
 
     Token initialToken; // used to reset the initial prompt to a single token
 
-    auto lctx = m_instance.ctx();
-    const auto ctxLen = llama_n_ctx(lctx);
+    const auto ctxLen = llama_n_ctx(m_ctx);
     const auto tokenBos = llama_token_bos(m_instance.model().lmodel());
     m_state.numKeep = std::min(uint32_t(initialPrompt.size()), m_state.maxTokens); // number of tokens to keep in the context in case we overflow
 
@@ -70,7 +69,7 @@ void Session::setInitialPrompt(std::span<const Token> initialPrompt) {
 
     if (m_instance.model().hasEncoder()) {
         auto batch = makeInputBatch(initialPrompt);
-        auto res = llama_encode(lctx, batch);
+        auto res = llama_encode(m_ctx, batch);
         if (res != 0) {
             throw_ex{} << "Failed to encode input";
         }
@@ -117,7 +116,7 @@ Token Session::getToken() {
     auto& sampler = m_instance.sampler();
     auto& vocab = m_instance.model().vocab();
 
-    m_state.m_currToken = sampler.sample(m_instance.ctx());
+    m_state.m_currToken = sampler.sample(m_ctx);
 
     if (vocab.isEog(m_state.m_currToken)) {
         // don't decode eog tokens in case the the interaction is continued
@@ -132,9 +131,9 @@ std::vector<uint8_t> Session::getState() {
         throw_ex{} << "Session hasn't started yet";
     }
 
-    const auto size = llama_state_get_size(m_instance.ctx());
+    const auto size = llama_state_get_size(m_ctx);
     std::vector<uint8_t> state(size);
-    if (llama_state_get_data(m_instance.ctx(), state.data(), size) != size) {
+    if (llama_state_get_data(m_ctx, state.data(), size) != size) {
         throw_ex{} << "Failed to get state";
     }
     return state;
@@ -145,19 +144,13 @@ bool Session::setState(std::span<uint8_t> state) {
         throw_ex{} << "Session already started";
     }
 
-    if (llama_state_set_data(m_instance.ctx(), state.data(), state.size()) != state.size()) {
+    if (llama_state_set_data(m_ctx, state.data(), state.size()) != state.size()) {
         throw_ex{} << "Failed to set state";
     }
     return true;
 }
 
 void Session::doDecode(std::span<const Token> tokens, Source src) {
-    // first try to expand the context if needed
-    const auto gaFactor = m_params.gaFactor;
-    auto lctx = m_instance.ctx();
-    const auto ctxLen = llama_n_ctx(lctx);
-    auto& sampler = m_instance.sampler();
-
     // Ensure the input doesn't exceed the context size by truncating embd if necessary.
     if (tokens.size() > m_state.maxTokens) {
         const auto skipped = tokens.size() - m_state.maxTokens;
@@ -166,6 +159,10 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
     }
 
     bool haveFullContextMitigation = false;
+    const auto gaFactor = m_params.gaFactor;
+    const auto ctxLen = llama_n_ctx(m_ctx);
+    auto& sampler = m_instance.sampler();
+
     if (gaFactor == 1) {
         // infinite text generation via context shifting
         // if we run out of context:
@@ -183,8 +180,8 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
             LLAMA_LOG(Debug, "Context is full. Swapping: past = ", m_state.numPast, ", numLeft: ", numLeft,
                 ", ctxLen: ", ctxLen, ", numKeep: ", m_state.numKeep, ", numDiscard: ", numDiscard);
 
-            llama_kv_cache_seq_rm(lctx, 0, m_state.numKeep, m_state.numKeep + numDiscard);
-            llama_kv_cache_seq_add(lctx, 0, m_state.numKeep + numDiscard, m_state.numPast, -numDiscard);
+            llama_kv_cache_seq_rm(m_ctx, 0, m_state.numKeep, m_state.numKeep + numDiscard);
+            llama_kv_cache_seq_add(m_ctx, 0, m_state.numKeep + numDiscard, m_state.numPast, -numDiscard);
 
             m_state.numPast -= numDiscard;
             haveFullContextMitigation = true;
@@ -201,9 +198,9 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
 
             LLAMA_LOG(Debug, "Group attention shift: ib = ", ib, ", bd = ", bd, ", dd = ", dd);
 
-            llama_kv_cache_seq_add(lctx, 0, m_state.gaIndex, m_state.numPast, ib * bd);
-            llama_kv_cache_seq_div(lctx, 0, m_state.gaIndex + ib * bd, m_state.gaIndex + ib * bd + gaWidth, gaFactor);
-            llama_kv_cache_seq_add(lctx, 0, m_state.gaIndex + ib * bd + gaWidth, m_state.numPast + ib * bd, dd);
+            llama_kv_cache_seq_add(m_ctx, 0, m_state.gaIndex, m_state.numPast, ib * bd);
+            llama_kv_cache_seq_div(m_ctx, 0, m_state.gaIndex + ib * bd, m_state.gaIndex + ib * bd + gaWidth, gaFactor);
+            llama_kv_cache_seq_add(m_ctx, 0, m_state.gaIndex + ib * bd + gaWidth, m_state.numPast + ib * bd, dd);
 
             m_state.numPast -= bd;
 
@@ -223,14 +220,14 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
     }
 
     // decode
-    const auto batchSize = llama_n_batch(lctx);
+    const auto batchSize = llama_n_batch(m_ctx);
 
     // decode with batches of batchSize
     while (!tokens.empty()) {
         auto batchTokens = tokens.size() > batchSize ? tokens.first(batchSize) : tokens;
         tokens = tokens.subspan(batchTokens.size());
         auto batch = makeInputBatch(batchTokens);
-        if (llama_decode(lctx, batch) != 0) {
+        if (llama_decode(m_ctx, batch) != 0) {
             throw_ex{} << "Failed to decode tokens";
         }
         m_state.numPast += uint32_t(batchTokens.size());

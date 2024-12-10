@@ -41,7 +41,7 @@ public:
     using Interface = ac::local::schema::LlamaCppInterface;
 
     ChatSession(llama::Instance& instance, Interface::OpChatBegin::Params& params)
-        : m_session(instance.newSession({}))
+        : m_session(instance.startSession({}))
         , m_vocab(instance.model().vocab())
     {
         m_promptTokens = instance.model().vocab().tokenize(params.setup.value(), true, true);
@@ -149,7 +149,7 @@ public:
         auto& prompt = params.prompt.value();
         const auto maxTokens = params.maxTokens.value();
 
-        auto s = m_instance.newSession({});
+        auto s = m_instance.startSession({});
 
         auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
         s.setInitialPrompt(promptTokens);

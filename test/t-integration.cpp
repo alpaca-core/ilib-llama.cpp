@@ -64,7 +64,7 @@ TEST_CASE("inference") {
         std::vector<ac::llama::Token> tokens;
 
         // choose a very, very suggestive prompt and hope that all architectures will agree
-        auto s = inst.newSession({});
+        auto s = inst.startSession({});
         tokens = model.vocab().tokenize("President George W.", true, true);
         s.setInitialPrompt(tokens);
         {
@@ -107,7 +107,7 @@ TEST_CASE("session states") {
             ac::llama::Instance inst(model, {});
             inst.addControlVector(ctrlVector);
             inst.warmup(); // should be safe
-            auto s = inst.newSession({});
+            auto s = inst.startSession({});
             std::vector<ac::llama::Token> tokens = model.vocab().tokenize("My car's fuel consumption is", true, true);
             s.setInitialPrompt(tokens);
             std::string text;
@@ -124,7 +124,7 @@ TEST_CASE("session states") {
             ac::llama::Instance inst(model, {});
             inst.addControlVector(ctrlVector);
             inst.warmup(); // should be safe
-            auto s = inst.newSession({});
+            auto s = inst.startSession({});
             std::vector<ac::llama::Token> tokens = model.vocab().tokenize("My car's fuel consumption is", true, true);
             s.setInitialPrompt(tokens);
             std::string text;
@@ -168,7 +168,7 @@ TEST_CASE("control_vector") {
     {
         // session 1
 
-        auto s = inst.newSession({});
+        auto s = inst.startSession({});
         auto tokens = model.vocab().tokenize(prompt, true, true);
         s.setInitialPrompt(tokens);
 
@@ -196,7 +196,7 @@ TEST_CASE("control_vector") {
     // test restoring the intial state
     // since the sampler is in the initial state we should get the same string
     {
-        auto s = inst.newSession({});
+        auto s = inst.startSession({});
         s.setState(initialState);
         std::string restoredStr;
 
@@ -218,7 +218,7 @@ TEST_CASE("control_vector") {
         //restores session 1
         std::string restoredStr;
         {
-            auto s = inst.newSession({});
+            auto s = inst.startSession({});
             s.setState(sessionMiddleState);
 
             for (size_t i = 0; i < nPredict / 2; i++) {
@@ -235,7 +235,7 @@ TEST_CASE("control_vector") {
         //restores session 2
         std::string restoredStr2;
         {
-            auto s = inst.newSession({});
+            auto s = inst.startSession({});
             s.setState(sessionMiddleState);
 
             for (size_t i = 0; i < nPredict / 2; i++) {

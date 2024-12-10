@@ -10,6 +10,8 @@
 #include <vector>
 #include <cassert>
 
+struct llama_context;
+
 namespace ac::llama {
 class Instance;
 
@@ -23,7 +25,7 @@ public:
         // only used if gaFactor == 1
         bool infiniteContext = true;
     };
-    Session(Instance& instance, InitParams params);
+    Session(Instance& instance, llama_context* ctx, InitParams params);
 
     void setInitialPrompt(std::span<const Token> prompt);
 
@@ -56,6 +58,7 @@ private:
     };
 
     Instance& m_instance;
+    llama_context* m_ctx;
     InitParams m_params;
     State m_state;
 };
