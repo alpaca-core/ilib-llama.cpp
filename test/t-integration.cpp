@@ -55,7 +55,6 @@ TEST_CASE("inference") {
     CHECK_FALSE(model.shouldAddBosToken());
     CHECK_FALSE(model.hasEncoder());
 
-
     // general inference
     {
         ac::llama::Instance inst(model, {});
@@ -64,7 +63,7 @@ TEST_CASE("inference") {
         std::vector<ac::llama::Token> tokens;
 
         // choose a very, very suggestive prompt and hope that all architectures will agree
-        auto s = inst.startSession({});
+        auto& s = inst.startSession({});
         tokens = model.vocab().tokenize("President George W.", true, true);
         s.setInitialPrompt(tokens);
         {
@@ -83,6 +82,73 @@ TEST_CASE("inference") {
             auto text = model.vocab().tokenToString(t);
             CHECK(text.starts_with(" rain")); // could be rains
         }
+    }
+}
+
+TEST_CASE("session") {
+    ac::llama::Model::Params iParams = {};
+    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(Model_117m_q6_k, {}, iParams);
+    ac::llama::Model model(lmodel, iParams);
+    CHECK(!!model.lmodel());
+
+    auto& params = model.params();
+    CHECK(params.gpu);
+    CHECK_FALSE(params.vocabOnly);
+
+    CHECK(model.trainCtxLength() == 1024);
+    CHECK_FALSE(model.shouldAddBosToken());
+    CHECK_FALSE(model.hasEncoder());
+    ac::llama::Instance inst(model, {});
+    inst.warmup(); // should be safe
+    SUBCASE("no initalization") {
+        auto& s = inst.startSession({});
+        SUBCASE("getToken") {
+            CHECK_THROWS_WITH(s.getToken(), "Session hasn't started yet");
+        }
+
+        SUBCASE("pushPrompt") {
+            auto tokens = model.vocab().tokenize("President George W.", true, true);
+            CHECK_THROWS_WITH(s.pushPrompt(tokens), "Session hasn't started yet");
+        }
+
+        SUBCASE("getState") {
+            CHECK_THROWS_WITH(s.getState(), "Session hasn't started yet");
+        }
+    }
+
+    SUBCASE("double initialization") {
+        auto& s = inst.startSession({});
+        auto tokens = model.vocab().tokenize("President George W.", true, true);
+        s.setInitialPrompt(tokens);
+        CHECK_THROWS_WITH(s.setState({}), "Session already started");
+    }
+
+    SUBCASE("generating phase") {
+        auto& s = inst.startSession({});
+        {
+            auto tokens = model.vocab().tokenize("President George W.", true, true);
+            s.setInitialPrompt(tokens);
+        }
+        {
+            auto t = s.getToken();
+            CHECK(model.vocab().tokenToString(t) == " Bush");
+        }
+        {
+            auto tokens = model.vocab().tokenize(" usually goes to Washington to", true, true);
+            s.pushPrompt(tokens);
+            auto t = s.getToken();
+            auto text = model.vocab().tokenToString(t);
+            CHECK(text.starts_with(" meet")); // could be rains
+        }
+        {
+            CHECK(s.getState().size() > 0);
+        }
+    }
+
+    SUBCASE("single session") {
+        auto& s = inst.startSession({});
+        (void)s;
+        CHECK_THROWS_WITH(inst.startSession({}), "Session is already started. Stop it to start a new one.");
     }
 }
 
@@ -107,7 +173,7 @@ TEST_CASE("session states") {
             ac::llama::Instance inst(model, {});
             inst.addControlVector(ctrlVector);
             inst.warmup(); // should be safe
-            auto s = inst.startSession({});
+            auto& s = inst.startSession({});
             std::vector<ac::llama::Token> tokens = model.vocab().tokenize("My car's fuel consumption is", true, true);
             s.setInitialPrompt(tokens);
             std::string text;
@@ -124,7 +190,7 @@ TEST_CASE("session states") {
             ac::llama::Instance inst(model, {});
             inst.addControlVector(ctrlVector);
             inst.warmup(); // should be safe
-            auto s = inst.startSession({});
+            auto& s = inst.startSession({});
             std::vector<ac::llama::Token> tokens = model.vocab().tokenize("My car's fuel consumption is", true, true);
             s.setInitialPrompt(tokens);
             std::string text;
@@ -168,7 +234,7 @@ TEST_CASE("control_vector") {
     {
         // session 1
 
-        auto s = inst.startSession({});
+        auto& s = inst.startSession({});
         auto tokens = model.vocab().tokenize(prompt, true, true);
         s.setInitialPrompt(tokens);
 
@@ -191,12 +257,13 @@ TEST_CASE("control_vector") {
                 generatedStr2 += text;
             }
         }
+        inst.stopSession();
     }
 
-    // test restoring the intial state
+    // test restoring the initial state
     // since the sampler is in the initial state we should get the same string
     {
-        auto s = inst.startSession({});
+        auto& s = inst.startSession({});
         s.setState(initialState);
         std::string restoredStr;
 
@@ -208,6 +275,7 @@ TEST_CASE("control_vector") {
         }
 
         CHECK(restoredStr == generatedStr);
+        inst.stopSession();
     }
 
     // Test restoring the middle state
@@ -218,7 +286,7 @@ TEST_CASE("control_vector") {
         //restores session 1
         std::string restoredStr;
         {
-            auto s = inst.startSession({});
+            auto& s = inst.startSession({});
             s.setState(sessionMiddleState);
 
             for (size_t i = 0; i < nPredict / 2; i++) {
@@ -227,6 +295,7 @@ TEST_CASE("control_vector") {
                 auto text = model.vocab().tokenToString(t);
                 restoredStr += text;
             }
+            inst.stopSession();
         }
 
         // Test that it's not the same as original due to samplers RNG state
@@ -235,7 +304,7 @@ TEST_CASE("control_vector") {
         //restores session 2
         std::string restoredStr2;
         {
-            auto s = inst.startSession({});
+            auto& s = inst.startSession({});
             s.setState(sessionMiddleState);
 
             for (size_t i = 0; i < nPredict / 2; i++) {
@@ -247,6 +316,7 @@ TEST_CASE("control_vector") {
 
             // Test that each session started from the same state produces the same string
             CHECK(restoredStr == restoredStr2);
+            inst.stopSession();
         }
     }
 }

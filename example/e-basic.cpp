@@ -60,7 +60,7 @@ int main() try {
     std::cout << "Prompt: " << prompt << "\n";
 
     // start session
-    auto session = instance.startSession({});
+    auto& session = instance.startSession({});
     session.setInitialPrompt(model.vocab().tokenize(prompt, true, true));
 
     // generate and print 100 tokens

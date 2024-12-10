@@ -79,12 +79,15 @@ void Session::setInitialPrompt(std::span<const Token> initialPrompt) {
     }
 
     doDecode(initialPrompt, Source::InitialPrompt);
+    m_state.m_phase = State::Phase::Generating;
 }
 
 void Session::pushPrompt(std::span<const Token> prompt) {
     if (m_state.m_phase != State::Phase::Generating) {
         throw_ex{} << "Session hasn't started yet";
     }
+
+    flushPendingState();
 
     if (!prompt.empty()) {
         auto& sampler = m_instance.sampler();
@@ -108,10 +111,7 @@ Token Session::getToken() {
         throw_ex{} << "Session hasn't started yet";
     }
 
-    if (m_state.m_currToken != Token_Invalid) {
-        // first yield, then decode, thus we don't decode if the session is aborted
-        doDecode({&m_state.m_currToken, 1}, Source::Generated);
-    }
+    flushPendingState();
 
     auto& sampler = m_instance.sampler();
     auto& vocab = m_instance.model().vocab();
@@ -131,6 +131,8 @@ std::vector<uint8_t> Session::getState() {
         throw_ex{} << "Session hasn't started yet";
     }
 
+    flushPendingState();
+
     const auto size = llama_state_get_size(m_ctx);
     std::vector<uint8_t> state(size);
     if (llama_state_get_data(m_ctx, state.data(), size) != size) {
@@ -147,6 +149,8 @@ bool Session::setState(std::span<uint8_t> state) {
     if (llama_state_set_data(m_ctx, state.data(), state.size()) != state.size()) {
         throw_ex{} << "Failed to set state";
     }
+
+    m_state.m_phase = State::Phase::Generating;
     return true;
 }
 
@@ -235,4 +239,11 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
 
 }
 
+void Session::flushPendingState() {
+    if (m_state.m_currToken != Token_Invalid) {
+        // first yield, then decode, thus we don't decode if the session is aborted
+        doDecode({&m_state.m_currToken, 1}, Source::Generated);
+        m_state.m_currToken = Token_Invalid;
+    }
+}
 } // namespace ac::llama
