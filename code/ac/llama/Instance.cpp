@@ -117,12 +117,16 @@ void Instance::warmup() {
 }
 
 Session& Instance::startSession(const Session::InitParams params) {
-    if (m_session) {
+    if (m_session.has_value()) {
         throw_ex{} << "Session is already started. Stop it to start a new one.";
     }
 
-    m_session.reset(new Session(*this, m_lctx.get(), params));
+    m_session.emplace(*this, m_lctx.get(), params);
     return *m_session;
+}
+
+void Instance::stopSession() noexcept {
+    m_session.reset();
 }
 
 } // namespace ac::llama
