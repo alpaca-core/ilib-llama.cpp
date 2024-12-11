@@ -35,7 +35,7 @@ public:
 
     // only one session per instance can be active at a time
     Session& startSession(const Session::InitParams params);
-    void stopSession() noexcept { m_session.reset(); }
+    void stopSession() noexcept;
 
     const Model& model() const noexcept { return m_model; }
     Sampler& sampler() noexcept { return m_sampler; }
@@ -44,7 +44,7 @@ private:
     Model& m_model;
     Sampler m_sampler;
     astl::c_unique_ptr<llama_context> m_lctx;
-    std::unique_ptr<Session> m_session;
+    std::optional<Session> m_session;
 };
 
 } // namespace ac::llama
