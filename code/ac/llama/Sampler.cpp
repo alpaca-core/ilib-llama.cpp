@@ -37,15 +37,10 @@ Sampler::Sampler(Model& model, const Params& params)
 
     llama_sampler_chain_add(chain,
         llama_sampler_init_penalties(
-            llama_n_vocab(lmodel),
-            llama_token_eos(lmodel),
-            llama_token_nl(lmodel),
             params.repetitionPenalty.numTokens,
             params.repetitionPenalty.repeat,
             params.repetitionPenalty.freq,
-            params.repetitionPenalty.present,
-            params.penalizeNewline,
-            params.ignoreEos
+            params.repetitionPenalty.present
         )
     );
 

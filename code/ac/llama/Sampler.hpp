@@ -62,9 +62,6 @@ public:
             float threshold = 0.10f;   // > 0.5 disables XTC
         } xtc;
 
-        bool penalizeNewline = false; // consider newlines as a repeatable token
-        bool ignoreEos = false;
-
         std::vector<SamplingType> samplerSequence = {
             SamplingType::Top_K,
             SamplingType::Typical_P,
