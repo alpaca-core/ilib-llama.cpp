@@ -67,20 +67,50 @@ TEST_CASE("inference") {
         tokens = model.vocab().tokenize("President George W.", true, true);
         s.setInitialPrompt(tokens);
         {
-            auto t = s.getToken();
-            REQUIRE(t != ac::llama::Token_Invalid);
-            auto text = model.vocab().tokenToString(t);
-            CHECK(text == " Bush");
+                auto t = s.getToken();
+                REQUIRE(t != ac::llama::Token_Invalid);
+                auto text = model.vocab().tokenToString(t);
+                CHECK(text == " Bush");
         }
 
-        // add more very suggestive stuff
-        tokens = model.vocab().tokenize(" sent troops to Cleveland which was hit by torrential", false, false);
-        s.pushPrompt(tokens);
-        {
-            auto t = s.getToken();
-            REQUIRE(t != ac::llama::Token_Invalid);
-            auto text = model.vocab().tokenToString(t);
-            CHECK(text.starts_with(" rain")); // could be rains
+        SUBCASE("default sampler") {
+            // add more very suggestive stuff
+            tokens = model.vocab().tokenize(" sent troops to Cleveland which was hit by torrential", false, false);
+            s.pushPrompt(tokens);
+            {
+                auto t = s.getToken();
+                REQUIRE(t != ac::llama::Token_Invalid);
+                auto text = model.vocab().tokenToString(t);
+                CHECK(text.starts_with(" rain")); // could be rains
+            }
+        }
+
+        SUBCASE("custom sampler") {
+            ac::llama::Sampler::Params samplerParams = {};
+            samplerParams.rngSeed = 1717;
+            samplerParams.minP = 0.2f;
+            samplerParams.topK = 100;
+            samplerParams.topP = 0.2f;
+            samplerParams.minKeep = 1000;
+            samplerParams.temp = 10.0f;
+            samplerParams.tempExp = 5.0f;
+            samplerParams.samplerSequence = {
+                ac::llama::Sampler::SamplingType::Min_P,
+                ac::llama::Sampler::SamplingType::Temperature,
+                ac::llama::Sampler::SamplingType::Top_K,
+                ac::llama::Sampler::SamplingType::Top_P,
+                };
+            inst.resetSampler(samplerParams);
+
+            // add more very suggestive stuff
+            tokens = model.vocab().tokenize(" sent troops to Cleveland which was hit by torrential", false, false);
+            s.pushPrompt(tokens);
+            {
+                auto t = s.getToken();
+                REQUIRE(t != ac::llama::Token_Invalid);
+                auto text = model.vocab().tokenToString(t);
+                CHECK(text.starts_with(" down"));
+            }
         }
     }
 }
