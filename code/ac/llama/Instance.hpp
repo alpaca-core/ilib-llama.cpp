@@ -40,11 +40,17 @@ public:
     void stopSession() noexcept;
 
     const Model& model() const noexcept { return m_model; }
-    Sampler& sampler() noexcept { return m_sampler; }
+
+    Sampler& sampler() noexcept { return *m_sampler; }
+
+    // Change sampler settings by resetting it
+    void resetSampler(const Sampler::Params& params) {
+        m_sampler.reset(new Sampler(m_model, params));
+    }
 
 private:
     Model& m_model;
-    Sampler m_sampler;
+    std::unique_ptr<Sampler> m_sampler;
     astl::c_unique_ptr<llama_context> m_lctx;
     std::optional<Session> m_session;
 };
