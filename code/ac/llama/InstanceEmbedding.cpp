@@ -28,6 +28,7 @@ llama_context_params llamaFromInstanceInitParams(const InstanceEmbedding::InitPa
     llamaParams.n_batch = params.batchSize;
     llamaParams.n_ubatch = params.ubatchSize;
     llamaParams.flash_attn = params.flashAttn;
+    llamaParams.embeddings = true;
     return llamaParams;
 }
 } // namespace
@@ -35,6 +36,7 @@ llama_context_params llamaFromInstanceInitParams(const InstanceEmbedding::InitPa
 InstanceEmbedding::InstanceEmbedding(Model& model, InitParams params)
     : m_model(model)
     , m_sampler(model, {})
+    , m_params(std::move(params))
     , m_lctx(llama_new_context_with_model(model.lmodel(), llamaFromInstanceInitParams(params)), llama_free)
 {
     if (!m_lctx) {
@@ -63,14 +65,6 @@ InstanceEmbedding::InstanceEmbedding(Model& model, InitParams params)
 InstanceEmbedding::~InstanceEmbedding() = default;
 
 namespace {
-llama_batch makeInputBatch(std::span<const Token> tokens) {
-    // well, llama.cpp does not touch the tokens for input batches, but llama_batch needs them to be non-const
-    // (mostly for stupid C reasons)
-    // so... we have to do something evil here
-    auto nonConstTokens = const_cast<Token*>(tokens.data());
-    return llama_batch_get_one(nonConstTokens, int32_t(tokens.size()));
-}
-
 void normalizeEmbedding(const float * inp, float * out, int n, int embd_norm) {
     double sum = 0.0;
 
@@ -106,48 +100,58 @@ void normalizeEmbedding(const float * inp, float * out, int n, int embd_norm) {
         out[i] = inp[i] * norm;
     }
 }
+
+void common_batch_add(
+                 struct llama_batch & batch,
+                        llama_token   id,
+                          llama_pos   pos,
+    const std::vector<llama_seq_id> & seq_ids,
+                               bool   logits) {
+    GGML_ASSERT(batch.seq_id[batch.n_tokens] && "llama_batch size exceeded");
+
+    batch.token   [batch.n_tokens] = id;
+    batch.pos     [batch.n_tokens] = pos;
+    batch.n_seq_id[batch.n_tokens] = seq_ids.size();
+    for (size_t i = 0; i < seq_ids.size(); ++i) {
+        batch.seq_id[batch.n_tokens][i] = seq_ids[i];
+    }
+    batch.logits  [batch.n_tokens] = logits;
+
+    batch.n_tokens++;
 }
 
-std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> prompt) {
-        // count number of embeddings
-    int n_embd_count = 0;
-    // if (pooling_type == LLAMA_POOLING_TYPE_NONE) {
-    //     for (int k = 0; k < n_prompts; k++) {
-    //         n_embd_count += inputs[k].size();
-    //     }
-    // } else {
-        n_embd_count = 1;//n_prompts;
-    // }
+void batch_add_seq(llama_batch& batch, std::span<const Token> tokens, llama_seq_id seq_id) {
+    size_t n_tokens = tokens.size();
+    for (size_t i = 0; i < n_tokens; i++) {
+        common_batch_add(batch, tokens[i], i, { seq_id }, true);
+    }
+}
 
-        // allocate output
-    const int n_embd = llama_n_embd(m_model.lmodel());
-    std::vector<float> embeddings(n_embd_count * n_embd, 0);
-    float* emb = embeddings.data();
+}
 
-    int e = 0;
-    // final batch
-    float * out = emb + e * n_embd;
-    llama_batch batch = makeInputBatch(prompt);
-
-    //batch_decode(ctx, batch, out, s, n_embd, params.embd_normalize);
+std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> prompt, int32_t normalization) {
     const enum llama_pooling_type pooling_type = llama_pooling_type(m_lctx.get());
     llama_context* ctx = m_lctx.get();
     llama_model* model = m_model.lmodel();
+    int n_embd_count = 1; // TODO: support multiple prompts
 
-    // clear previous kv_cache values (irrelevant for embeddings)
+        // allocate output
+    const int n_embd = llama_n_embd(model);
+    std::vector<float> embeddings(n_embd_count * n_embd, 0);
+    float* embData = embeddings.data();
+
+    llama_batch batch = llama_batch_init(m_params.batchSize, 0, 1);
+    batch_add_seq(batch, prompt, 0);
+
     llama_kv_cache_clear(ctx);
 
-    // run model
-    // LOG_INF("%s: n_tokens = %d, n_seq = %d\n", __func__, batch.n_tokens, n_seq);
     if (llama_model_has_encoder(model) && !llama_model_has_decoder(model)) {
-        // encoder-only model
         if (llama_encode(ctx, batch) < 0) {
-            // LOG_ERR("%s : failed to encode\n", __func__);
+            LLAMA_LOG(Error, "Failed to encode!");
         }
     } else if (!llama_model_has_encoder(model) && llama_model_has_decoder(model)) {
-        // decoder-only model
         if (llama_decode(ctx, batch) < 0) {
-            // LOG_ERR("%s : failed to decode\n", __func__);
+            LLAMA_LOG(Error, "Failed to decode!");
         }
     }
 
@@ -163,18 +167,16 @@ std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> 
             // try to get token embeddings
             embd = llama_get_embeddings_ith(ctx, i);
             embd_pos = i;
-            // GGML_ASSERT(embd != NULL && "failed to get token embeddings");
+            assert(embd != NULL && "Failed to get token embeddings");
         } else {
             // try to get sequence embeddings - supported only when pooling_type is not NONE
             embd = llama_get_embeddings_seq(ctx, batch.seq_id[i][0]);
             embd_pos = batch.seq_id[i][0];
-            // GGML_ASSERT(embd != NULL && "failed to get sequence embeddings");
+            assert(embd != NULL && "Failed to get sequence embeddings");
         }
 
-        float * outRes = out + embd_pos * n_embd;
-        // TODO: add normalization option
-        int embd_norm = 0; //params.embd_normalize;
-        normalizeEmbedding(embd, outRes, n_embd, embd_norm);
+        float * outRes = embData + embd_pos * n_embd;
+        normalizeEmbedding(embd, outRes, n_embd, normalization);
     }
 
     return embeddings;
