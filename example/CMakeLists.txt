@@ -1,13 +1,18 @@
 # Copyright (c) Alpaca Core
 # SPDX-License-Identifier: MIT
 #
-add_executable(example-ac-llama-basic e-basic.cpp)
-target_link_libraries(example-ac-llama-basic PRIVATE
-    ac::llama
-    ac-test-data::llama
-    ac::jalog
-)
-set_target_properties(example-ac-llama-basic PROPERTIES FOLDER example)
+function (add_example name)
+    add_executable(example-ac-llama-${name} e-${name}.cpp)
+    target_link_libraries(example-ac-llama-${name} PRIVATE
+        ac::llama
+        ac-test-data::llama
+        ac::jalog
+    )
+    set_target_properties(example-ac-llama-${name} PROPERTIES FOLDER example)
+endfunction()
+
+add_example(basic)
+add_example(embedding)
 
 CPMAddPackage(gh:alpaca-core/helper-imgui-sdl@1.0.0)
 if(TARGET ac-dev::imgui-sdl-app)

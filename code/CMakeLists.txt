@@ -27,6 +27,8 @@ target_sources(ac-llama PRIVATE
     ac/llama/Sampler.cpp
     ac/llama/Instance.hpp
     ac/llama/Instance.cpp
+    ac/llama/InstanceEmbedding.hpp
+    ac/llama/InstanceEmbedding.cpp
     ac/llama/Session.hpp
     ac/llama/Session.cpp
     ac/llama/AntipromptManager.hpp

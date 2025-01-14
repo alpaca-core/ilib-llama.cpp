@@ -3,6 +3,7 @@
 //
 #include <ac/llama/Session.hpp>
 #include <ac/llama/Instance.hpp>
+#include <ac/llama/InstanceEmbedding.hpp>
 #include <ac/llama/Init.hpp>
 #include <ac/llama/Model.hpp>
 #include <ac/llama/AntipromptManager.hpp>
@@ -209,6 +210,40 @@ public:
     }
 };
 
+class LlamaInstanceEmbedding final : public Instance {
+    std::shared_ptr<llama::Model> m_model;
+    llama::InstanceEmbedding m_instance;
+
+    schema::OpDispatcherData m_dispatcherData;
+public:
+    using Schema = ac::local::schema::LlamaCppLoader::InstanceGeneral;
+    using Interface = ac::local::schema::LlamaCppEmbeddingInterface;
+
+    LlamaInstanceEmbedding(std::shared_ptr<llama::Model> model, llama::InstanceEmbedding::InitParams params)
+        : m_model(astl::move(model))
+        , m_instance(*m_model, astl::move(params))
+    {
+        schema::registerHandlers<Interface::Ops>(m_dispatcherData, *this);
+    }
+
+    Interface::OpRun::Return on(Interface::OpRun, Interface::OpRun::Params&& params) {
+        auto& prompt = params.prompt.value();
+        auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
+
+        Interface::OpRun::Return ret;
+        ret.result = m_instance.getEmbeddingVector(promptTokens);
+        return ret;
+    }
+
+    virtual Dict runOp(std::string_view op, Dict params, ProgressCb) override {
+        auto ret = m_dispatcherData.dispatch(op, astl::move(params));
+        if (!ret) {
+            throw_ex{} << "llama: unknown op: " << op;
+        }
+        return *ret;
+    }
+};
+
 class LlamaModel final : public Model {
     using Schema = ac::local::schema::LlamaCppLoader;
 
@@ -246,9 +281,12 @@ public:
     }
 
     virtual std::unique_ptr<Instance> createInstance(std::string_view type, Dict params) override {
-        ac::llama::ControlVector ctrlVector(*m_model, m_ctrlVectors);
         if (type == "general") {
+            ac::llama::ControlVector ctrlVector(*m_model, m_ctrlVectors);
             return std::make_unique<LlamaInstance>(m_model, ctrlVector, translateInstanceParams(astl::move(params)));
+        }
+        else if (type == "embedding") {
+            return std::make_unique<LlamaInstanceEmbedding>(m_model, llama::InstanceEmbedding::InitParams{});
         }
         else {
             throw_ex{} << "llama: unknown instance type: " << type;

@@ -96,6 +96,36 @@ struct LlamaCppInterface {
     using Ops = std::tuple<OpRun, OpChatBegin, OpAddChatPrompt, OpGetChatResponse>;
 };
 
+struct LlamaCppEmbeddingInterface {
+    static inline constexpr std::string_view id = "llama.cpp embedding";
+    static inline constexpr std::string_view description = "ilib-llama.cpp embedding-specific interface";
+
+    struct OpRun {
+        static inline constexpr std::string_view id = "run";
+        static inline constexpr std::string_view description = "Run to produce an embedding vector";
+
+        struct Params {
+            Field<std::string> prompt;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(prompt, "prompt", "Prompt to generate the embedding for");
+            }
+        };
+
+        struct Return {
+            Field<std::vector<float>> result;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(result, "result", "Generated result (embedding vector)");
+            }
+        };
+    };
+
+    using Ops = std::tuple<OpRun>;
+};
+
 struct LlamaCppLoader {
     static inline constexpr std::string_view id = "llama.cpp";
     static inline constexpr std::string_view description = "Inference based on our fork of https://github.com/ggerganov/llama.cpp";
