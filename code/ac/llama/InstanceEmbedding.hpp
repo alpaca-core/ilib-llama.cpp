@@ -29,7 +29,10 @@ public:
     explicit InstanceEmbedding(Model& model, InitParams params);
     ~InstanceEmbedding();
 
-    std::vector<float> getEmbeddingVector(std::span<const Token> prompt);
+    // Get the embedding vector for the given prompt
+    // the normalization parameter is used to normalize the embeddings
+    // values are (-1=none, 0=max absolute int16, 1=taxicab, 2=euclidean[default], >2=p-norm)
+    std::vector<float> getEmbeddingVector(std::span<const Token> prompt, int32_t normalization = 2);
 
     const Model& model() const noexcept { return m_model; }
     Sampler& sampler() noexcept { return m_sampler; }
@@ -37,6 +40,7 @@ public:
 private:
     Model& m_model;
     Sampler m_sampler;
+    InitParams m_params;
     astl::c_unique_ptr<llama_context> m_lctx;
     std::optional<Session> m_session;
 };
