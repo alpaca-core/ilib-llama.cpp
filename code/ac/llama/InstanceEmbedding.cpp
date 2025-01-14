@@ -53,13 +53,6 @@ InstanceEmbedding::InstanceEmbedding(Model& model, InitParams params)
     if (llama_model_has_encoder(m_model.lmodel()) && llama_model_has_decoder(m_model.lmodel())) {
         LLAMA_LOG(Error, "Computing embeddings in encoder-decoder models is not supported");
     }
-
-    // for (auto& lora: model.loras())
-    // {
-    //     if (llama_lora_adapter_set(m_lctx.get(), lora->adapter(), lora->scale()) < 0) {
-    //         LLAMA_LOG(Error, "Failed to set LORA adapter from ", lora->path());
-    //     }
-    // }
 }
 
 InstanceEmbedding::~InstanceEmbedding() = default;
@@ -101,32 +94,17 @@ void normalizeEmbedding(const float * inp, float * out, int n, int embd_norm) {
     }
 }
 
-void common_batch_add(
-                 struct llama_batch & batch,
-                        llama_token   id,
-                          llama_pos   pos,
-    const std::vector<llama_seq_id> & seq_ids,
-                               bool   logits) {
-    GGML_ASSERT(batch.seq_id[batch.n_tokens] && "llama_batch size exceeded");
+void batchAddSeq(llama_batch& batch, std::span<const Token> tokens, llama_seq_id seq_id) {
+    for (size_t i = 0; i < tokens.size(); i++) {
+        batch.token   [batch.n_tokens] = tokens[i];
+        batch.pos     [batch.n_tokens] = i;
+        batch.n_seq_id[batch.n_tokens] = 1;
+        batch.seq_id[batch.n_tokens][0] = seq_id;
+        batch.logits  [batch.n_tokens] = true;
 
-    batch.token   [batch.n_tokens] = id;
-    batch.pos     [batch.n_tokens] = pos;
-    batch.n_seq_id[batch.n_tokens] = seq_ids.size();
-    for (size_t i = 0; i < seq_ids.size(); ++i) {
-        batch.seq_id[batch.n_tokens][i] = seq_ids[i];
-    }
-    batch.logits  [batch.n_tokens] = logits;
-
-    batch.n_tokens++;
-}
-
-void batch_add_seq(llama_batch& batch, std::span<const Token> tokens, llama_seq_id seq_id) {
-    size_t n_tokens = tokens.size();
-    for (size_t i = 0; i < n_tokens; i++) {
-        common_batch_add(batch, tokens[i], i, { seq_id }, true);
+        batch.n_tokens++;
     }
 }
-
 }
 
 std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> prompt, int32_t normalization) {
@@ -141,7 +119,7 @@ std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> 
     float* embData = embeddings.data();
 
     llama_batch batch = llama_batch_init(m_params.batchSize, 0, 1);
-    batch_add_seq(batch, prompt, 0);
+    batchAddSeq(batch, prompt, 0);
 
     llama_kv_cache_clear(ctx);
 
