@@ -46,7 +46,6 @@ struct StateInitial {
     using Outs = std::tuple<>;
 };
 
-
 struct StateModelLoaded {
     static constexpr auto id = "model-loaded";
     static constexpr auto desc = "Model loaded state";
@@ -183,6 +182,36 @@ struct StateChat {
     using Ops = std::tuple<OpChatEnd, OpAddChatPrompt, OpGetChatResponse>;
     using Ins = std::tuple<>;
     using Outs = std::tuple<>;
+};
+
+struct StateEmbeddingInstance {
+    static constexpr auto id = "embedding-instance";
+    static constexpr auto desc = "Embedding instance state";
+
+    struct OpRun {
+        static inline constexpr std::string_view id = "run";
+        static inline constexpr std::string_view description = "Run to produce an embedding vector";
+
+        struct Params {
+            Field<std::string> prompt;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(prompt, "prompt", "Prompt to generate the embedding for");
+            }
+        };
+
+        struct Return {
+            Field<std::vector<float>> result;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(result, "result", "Generated result (embedding vector)");
+            }
+        };
+    };
+
+    using Ops = std::tuple<OpRun>;
 };
 
 struct Interface {

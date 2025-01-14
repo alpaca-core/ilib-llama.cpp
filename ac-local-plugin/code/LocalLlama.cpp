@@ -3,6 +3,7 @@
 //
 #include <ac/llama/Session.hpp>
 #include <ac/llama/Instance.hpp>
+#include <ac/llama/InstanceEmbedding.hpp>
 #include <ac/llama/Init.hpp>
 #include <ac/llama/Model.hpp>
 #include <ac/llama/AntipromptManager.hpp>
