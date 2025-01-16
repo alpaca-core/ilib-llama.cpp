@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 
+struct llama_vocab;
 namespace ac::llama {
 
 class Model;
@@ -24,8 +25,11 @@ public:
     bool isEog(Token token) const noexcept;
 
     std::string tokenToString(Token token, bool special = true) const;
+
+    const llama_vocab* lvocab() const { return m_lVocab; }
 private:
     const Model& m_model;
+    const llama_vocab* m_lVocab;
 };
 
 } // namespace ac::llama

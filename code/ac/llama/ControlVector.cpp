@@ -6,6 +6,7 @@
 #include "Logging.hpp"
 
 #include <llama.h>
+#include <gguf.h>
 
 namespace ac::llama {
 namespace {
@@ -99,7 +100,7 @@ ControlVectorLoadResult loadControlVector(const ControlVector::LoadInfo& loadInf
 
 ControlVector::ControlVector(const Model& model, const std::vector<LoadInfo>& infos, int lStart, int lEnd)
     : controlVectorLayerStart(lStart <= 0 ? 1 : lStart)
-    , controlVectorLayerEnd(lEnd <= 0 ? llama_n_layer(model.lmodel()) : lEnd)
+    , controlVectorLayerEnd(lEnd <= 0 ? llama_model_n_layer(model.lmodel()) : lEnd)
 {
     for (const auto & info : infos) {
         auto cur = loadControlVector(info);

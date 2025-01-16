@@ -43,11 +43,11 @@ Model::~Model() = default;
 
 
 uint32_t Model::trainCtxLength() const noexcept {
-    return uint32_t(llama_n_ctx_train(m_lmodel.get()));
+    return uint32_t(llama_model_n_ctx_train(m_lmodel.get()));
 }
 
 bool Model::shouldAddBosToken() const noexcept {
-    return llama_add_bos_token(m_lmodel.get());
+    return llama_vocab_get_add_bos(m_vocab.lvocab());
 }
 
 bool Model::hasEncoder() const noexcept {

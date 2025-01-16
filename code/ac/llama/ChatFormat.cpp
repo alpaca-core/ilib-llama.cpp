@@ -13,7 +13,7 @@ namespace ac::llama {
 namespace {
 bool verify(const std::string& tpl) {
     const llama_chat_message msg = {"user", "test"};
-    auto res = llama_chat_apply_template(nullptr, tpl.c_str(), &msg, 1, true, nullptr, 0);
+    auto res = llama_chat_apply_template(tpl.c_str(), &msg, 1, true, nullptr, 0);
     return res >= 0;
 }
 
@@ -68,13 +68,13 @@ std::string ChatFormat::apply(std::span<const llama_chat_message> chat, size_t s
     std::string fmt(allocSize, '\0');
 
     // run the first time and get the total output length
-    int32_t res = llama_chat_apply_template(nullptr, m_template.c_str(), chat.data(), chat.size(),
+    int32_t res = llama_chat_apply_template(m_template.c_str(), chat.data(), chat.size(),
         addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
 
     if (res > int32_t(fmt.size())) {
         // optimistic size was not enough
         fmt.resize(res);
-        res = llama_chat_apply_template(nullptr, m_template.c_str(), chat.data(), chat.size(),
+        res = llama_chat_apply_template(m_template.c_str(), chat.data(), chat.size(),
             addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
     }
 

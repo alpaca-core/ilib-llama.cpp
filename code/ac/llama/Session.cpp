@@ -46,7 +46,7 @@ void Session::setInitialPrompt(std::span<const Token> initialPrompt) {
     Token initialToken; // used to reset the initial prompt to a single token
 
     const auto ctxLen = llama_n_ctx(m_ctx);
-    const auto tokenBos = llama_token_bos(m_instance.model().lmodel());
+    const auto tokenBos = llama_vocab_bos(m_instance.model().vocab().lvocab());
     m_state.numKeep = std::min(uint32_t(initialPrompt.size()), m_state.maxTokens); // number of tokens to keep in the context in case we overflow
 
     if (initialPrompt.empty()) {
@@ -97,7 +97,7 @@ void Session::pushPrompt(std::span<const Token> prompt) {
         sampler.reset();
 
         if (model.prefixInputsWithBos()) {
-            const auto tokenBos = llama_token_bos(m_instance.model().lmodel());
+            const auto tokenBos = llama_vocab_bos(model.vocab().lvocab());
             // add bos token to the prompt
             doDecode({&tokenBos, 1}, Source::InteractivePrompt);
         }

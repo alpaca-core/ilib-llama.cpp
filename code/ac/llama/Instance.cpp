@@ -35,7 +35,7 @@ llama_context_params llamaFromInstanceInitParams(const Instance::InitParams& par
 Instance::Instance(Model& model, InitParams params)
     : m_model(model)
     , m_sampler(model, {})
-    , m_lctx(llama_new_context_with_model(model.lmodel(), llamaFromInstanceInitParams(params)), llama_free)
+    , m_lctx(llama_init_from_model(model.lmodel(), llamaFromInstanceInitParams(params)), llama_free)
 {
     if (!m_lctx) {
         throw_ex{} << "Failed to create llama context";
@@ -48,10 +48,10 @@ Instance::Instance(Model& model, InitParams params)
         LLAMA_LOG(Warning, "Instance requested context length ", ctxLen, " is greater than the model's training context length ", ctxTrain);
     }
 
-    for (auto& lora: model.loras())
-    {
-        if (llama_lora_adapter_set(m_lctx.get(), lora->adapter(), lora->scale()) < 0) {
-            LLAMA_LOG(Error, "Failed to set LORA adapter from ", lora->path());
+    llama_clear_adapter_lora(m_lctx.get());
+    for (auto & la : model.loras()) {
+        if (la->scale() != 0.0f) {
+            llama_set_adapter_lora(m_lctx.get(), la->adapter(), la->scale());
         }
     }
 }
@@ -69,7 +69,7 @@ llama_batch makeInputBatch(std::span<const Token> tokens) {
 }
 
 void Instance::addControlVector(const ControlVector& ctrlVector) {
-    int err = llama_control_vector_apply(m_lctx.get(),
+    int err = llama_apply_adapter_cvec(m_lctx.get(),
             ctrlVector.data.data(),
             ctrlVector.data.size(),
             ctrlVector.nEmbd,
@@ -88,8 +88,8 @@ void Instance::warmup() {
     auto model = m_model.lmodel();
 
     std::vector<llama_token> tmp;
-    llama_token bos = llama_token_bos(model);
-    llama_token eos = llama_token_eos(model);
+    llama_token bos = llama_vocab_bos(m_model.vocab().lvocab());
+    llama_token eos = llama_vocab_eos(m_model.vocab().lvocab());
     // some models (e.g. T5) don't have a BOS token
     if (bos != LLAMA_TOKEN_NULL) {
         tmp.push_back(bos);

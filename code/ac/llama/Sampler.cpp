@@ -13,7 +13,7 @@
 namespace ac::llama {
 
 Sampler::Sampler(Model& model, const Params& params)
-    : m_grammarSampler(llama_sampler_init_grammar(model.lmodel(), params.grammar.c_str(), "root"), llama_sampler_free)
+    : m_grammarSampler(llama_sampler_init_grammar(llama_model_get_vocab(model.lmodel()), params.grammar.c_str(), "root"), llama_sampler_free)
     , m_samplerChain(llama_sampler_chain_init({ .no_perf = false }), llama_sampler_free)
 {
     auto lmodel = model.lmodel();
@@ -29,7 +29,7 @@ Sampler::Sampler(Model& model, const Params& params)
 
     llama_sampler_chain_add(chain,
         llama_sampler_init_logit_bias(
-            llama_n_vocab(lmodel),
+            llama_vocab_n_tokens(llama_model_get_vocab(lmodel)),
             int32_t(params.logitBias.size()),
             reinterpret_cast<const llama_logit_bias*>(logitBiasBuf.data())
         )
@@ -50,7 +50,7 @@ Sampler::Sampler(Model& model, const Params& params)
         llama_sampler_chain_add(chain, llama_sampler_init_temp(params.temp));
         llama_sampler_chain_add(chain,
             llama_sampler_init_mirostat(
-                llama_n_vocab(lmodel),
+                llama_vocab_n_tokens(llama_model_get_vocab(lmodel)),
                 params.rngSeed,
                 miro.tau, miro.eta, 100
             )
@@ -84,7 +84,7 @@ Sampler::Sampler(Model& model, const Params& params)
                 case SamplingType::XTC:
                     return llama_sampler_init_xtc(params.xtc.probability, params.xtc.threshold, minKeep, params.rngSeed);
                 case SamplingType::Infill:
-                    return llama_sampler_init_infill(lmodel);
+                    return llama_sampler_init_infill(llama_model_get_vocab(lmodel));
                 default:
                     throw std::runtime_error("Unsupported sampler type");
                 }
@@ -110,7 +110,8 @@ namespace {
 llama_token_data_array fillLogits(std::vector<llama_token_data>& out, llama_context* lctx, int idx) {
     const auto* logits = llama_get_logits_ith(lctx, idx);
 
-    const int vocabSize = llama_n_vocab(llama_get_model(lctx));
+    const auto* lmodel = llama_get_model(lctx);
+    const int vocabSize = llama_vocab_n_tokens(llama_model_get_vocab(lmodel));
 
     out.resize(vocabSize);
 

@@ -9,7 +9,7 @@
 namespace ac::llama {
 
 LoraAdapter::LoraAdapter(Model& model, std::string path, float scale)
-    : m_adapter(llama_lora_adapter_init(model.lmodel(), path.c_str()), llama_lora_adapter_free)
+    : m_adapter(llama_adapter_lora_init(model.lmodel(), path.c_str()), llama_adapter_lora_free)
     , m_scale(scale)
     , m_path(std::move(path))
 {

@@ -13,6 +13,7 @@ struct llama_token_data;
 struct llama_context;
 struct llama_token_data_array;
 struct llama_sampler;
+struct llama_vocab;
 
 namespace ac::llama {
 
