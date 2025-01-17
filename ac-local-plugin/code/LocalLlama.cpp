@@ -241,7 +241,9 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
                 }
 
                 auto tokenStr = model.vocab().tokenToString(t);
-                if (antiprompt.feedGeneratedText(tokenStr)) {
+                auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
+                if (!matchedAntiPrompt.empty()) {
+                    break;
                     break;
                 }
 
