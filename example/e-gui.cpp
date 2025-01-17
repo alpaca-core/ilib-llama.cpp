@@ -106,8 +106,8 @@ public:
 
                     auto tokenStr = m_vocab.tokenToString(token);
                     m_text += tokenStr;
-
-                    if (m_antiprompt.feedGeneratedText(tokenStr)) {
+                    auto matchedAntiPrompt = m_antiprompt.feedGeneratedText(tokenStr);
+                    if (!matchedAntiPrompt.empty()) {
                         m_numTokens = 0;
                         return;
                     }

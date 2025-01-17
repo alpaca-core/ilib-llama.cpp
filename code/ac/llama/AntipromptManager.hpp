@@ -19,7 +19,7 @@ public:
     void addAntiprompt(std::string_view antiprompt);
 
     // feed each antiprompt with the text
-    bool feedGeneratedText(std::string_view text);
+    std::string feedGeneratedText(std::string_view text);
 
     // reset the state of all antiprompts
     void reset();

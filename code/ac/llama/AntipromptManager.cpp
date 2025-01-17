@@ -9,15 +9,18 @@ void AntipromptManager::addAntiprompt(std::string_view antiprompt) {
     m_antiprompts.push_back(std::string(antiprompt));
 }
 
-bool AntipromptManager::feedGeneratedText(std::string_view text) {
+std::string AntipromptManager::feedGeneratedText(std::string_view text) {
     for (auto& ap : m_antiprompts) {
-        if (ap.feedText(text)) {
+        int found = ap.feedText(text);
+        if (found > 0) {
             reset();
-            return true;
+            return found == 0 ?
+                        ap.getString():
+                        ap.getString() + std::string(text.substr(found, text.length()));
         }
     }
 
-    return false;
+    return {};
 }
 
 void AntipromptManager::reset() {

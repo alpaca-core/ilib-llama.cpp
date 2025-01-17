@@ -10,9 +10,9 @@ IncrementalStringFinder::IncrementalStringFinder(std::string searchStr)
     , m_currentPos(0)
 {}
 
-bool IncrementalStringFinder::feedText(std::string_view text) {
+int IncrementalStringFinder::feedText(std::string_view text) {
     if (m_searchStr.length() == 0) {
-        return false;
+        return -1;
     }
 
     uint32_t promptPos = 0;
@@ -32,10 +32,10 @@ bool IncrementalStringFinder::feedText(std::string_view text) {
 
     if (m_currentPos == m_searchStr.length()) {
         m_currentPos = 0;
-        return true;
+        return promptPos;
     }
 
-    return false;
+    return -1;
 }
 
 void IncrementalStringFinder::reset() {

@@ -170,7 +170,8 @@ public:
             }
 
             auto tokenStr = model.vocab().tokenToString(t);
-            if (antiprompt.feedGeneratedText(tokenStr)) {
+            auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
+            if (!matchedAntiPrompt.empty()) {
                 break;
             }
 
