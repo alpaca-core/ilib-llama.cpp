@@ -34,7 +34,9 @@ llama_context_params llamaFromInstanceInitParams(const Instance::InitParams& par
 
 Instance::Instance(Model& model, InitParams params)
     : m_model(model)
-    , m_sampler(model, {})
+    , m_sampler(model, {
+        .grammar = params.grammar,
+    })
     , m_lctx(llama_init_from_model(model.lmodel(), llamaFromInstanceInitParams(params)), llama_free)
 {
     if (!m_lctx) {
