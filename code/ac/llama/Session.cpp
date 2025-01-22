@@ -258,7 +258,6 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
         }
         m_state.numPast += uint32_t(batchTokens.size());
     }
-
 }
 
 void Session::flushPendingState() {
