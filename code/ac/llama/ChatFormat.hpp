@@ -10,7 +10,6 @@ struct llama_chat_message;
 
 namespace ac::llama {
 class AC_LLAMA_EXPORT ChatFormat {
-    std::string m_template;
 public:
     // the template string here can be either an id or a markup
     explicit ChatFormat(std::string tpl);
@@ -26,5 +25,8 @@ public:
 
 private:
     std::string apply(std::span<const llama_chat_message> chat, size_t chatSize, bool addAssistantPrompt) const;
+
+    std::string m_template;
+    int m_templateId;
 };
 } // namespace ac::llama
