@@ -109,6 +109,7 @@ std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> h
 std::string ChatFormat::apply(std::span<const llama_chat_message> chat, size_t size, bool addAssistantPrompt) const {
     if (size == 0) return {};
 
+    // TODO: take assistant prompt into account
     auto msgSize = MAX_SINGLE_MESSAGE_TEMPLATE_SIZE.at(llm_chat_template(m_templateId));
     auto formattedChatAllocSize = size + chat.size() * msgSize;
     std::string fmt(formattedChatAllocSize, '\0');
@@ -118,7 +119,7 @@ std::string ChatFormat::apply(std::span<const llama_chat_message> chat, size_t s
         addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
 
     if (res > int32_t(fmt.size())) {
-        // The assert should never happen, the cases it might occur are
+        // The assert should never happen, the case when it might occur is
         // - not updated value in MAX_SINGLE_MESSAGE_TEMPLATE_SIZE, because a template has been changed in llama.cpp
         assert(false && "The max template size is not calculated properly! Will re-run the template with the correct size.");
         // optimistic size was not enough
