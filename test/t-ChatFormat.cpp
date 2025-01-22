@@ -153,13 +153,12 @@ TEST_CASE("apply") {
 }
 
 TEST_CASE("formatMsg - system") {
-    std::vector<ac::llama::ChatMsg> emptyChat = {};
     ac::llama::ChatMsg msg = {"system", "You are a helpful assistant"};
 
     auto test = [&](std::string id) {
         ac::llama::ChatFormat fmt{id};
         CHECK(fmt.tpl() == id);
-        return fmt.formatMsg(msg, emptyChat, false);
+        return fmt.formatMsg(msg, {}, false);
     };
 
     CHECK(test("chatml") == "<|im_start|>system\nYou are a helpful assistant<|im_end|>\n");
@@ -169,23 +168,40 @@ TEST_CASE("formatMsg - system") {
 }
 
 TEST_CASE("formatMsg - chat") {
-    const std::vector<ac::llama::ChatMsg> chat = {
-        {"system", "You are a helpful assistant"},
-        {"user", "Hello"},
-        {"assistant", "I am assistant"}
-    };
-    ac::llama::ChatMsg msg = {"user", "How are you"};
+    SUBCASE("empty chat") {
+        ac::llama::ChatMsg msg = {"user", "How are you"};
 
-    auto test = [&](std::string id) {
-        ac::llama::ChatFormat fmt{id};
-        CHECK(fmt.tpl() == id);
-        return fmt.formatMsg(msg, chat, true);
-    };
+        auto test = [&](std::string id) {
+            ac::llama::ChatFormat fmt{id};
+            CHECK(fmt.tpl() == id);
+            return fmt.formatMsg(msg, {}, true);
+        };
 
-    CHECK(test("chatml") == "\n<|im_start|>user\nHow are you<|im_end|>\n<|im_start|>assistant\n");
-    CHECK(test("llama2") == "[INST] How are you [/INST]");
-    CHECK(test("gemma") == "\n<start_of_turn>user\nHow are you<end_of_turn>\n<start_of_turn>model\n");
-    CHECK(test("llama3") == "<|start_header_id|>user<|end_header_id|>\n\nHow are you<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n");
+        CHECK(test("chatml") == "<|im_start|>user\nHow are you<|im_end|>\n<|im_start|>assistant\n");
+        CHECK(test("llama2") == "[INST] How are you [/INST]");
+        CHECK(test("gemma") == "<start_of_turn>user\nHow are you<end_of_turn>\n<start_of_turn>model\n");
+        CHECK(test("llama3") == "<|start_header_id|>user<|end_header_id|>\n\nHow are you<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n");
+    }
+
+    SUBCASE("full chat") {
+        const std::vector<ac::llama::ChatMsg> chat = {
+            {"system", "You are a helpful assistant"},
+            {"user", "Hello"},
+            {"assistant", "I am assistant"}
+        };
+        ac::llama::ChatMsg msg = {"user", "How are you"};
+
+        auto test = [&](std::string id) {
+            ac::llama::ChatFormat fmt{id};
+            CHECK(fmt.tpl() == id);
+            return fmt.formatMsg(msg, chat, true);
+        };
+
+        CHECK(test("chatml") == "\n<|im_start|>user\nHow are you<|im_end|>\n<|im_start|>assistant\n");
+        CHECK(test("llama2") == "[INST] How are you [/INST]");
+        CHECK(test("gemma") == "\n<start_of_turn>user\nHow are you<end_of_turn>\n<start_of_turn>model\n");
+        CHECK(test("llama3") == "<|start_header_id|>user<|end_header_id|>\n\nHow are you<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n");
+    }
 }
 
 TEST_CASE("invalid") {
