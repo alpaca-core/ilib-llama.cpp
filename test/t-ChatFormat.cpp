@@ -1,4 +1,4 @@
-﻿// Copyright (c) Alpaca Core
+// Copyright (c) Alpaca Core
 // SPDX-License-Identifier: MIT
 //
 #include <ac/llama/ChatFormat.hpp>
@@ -42,6 +42,33 @@ constexpr std::array LLAMA_CHAT_TEMPLATES = {
     "gigachat",
     "megrez",
 };
+
+int32_t calculateSingleMessageMaxSize(const std::string& tmpl) {
+    const std::vector<ac::llama::ChatMsg> systemChat = {
+        {"system", ""},
+    };
+
+    const std::vector<ac::llama::ChatMsg> userChat = {
+        {"user", ""},
+    };
+
+    const std::vector<ac::llama::ChatMsg> asssistantChat = {
+        {"assistant", ""}
+    };
+
+    ac::llama::ChatFormat fmt{tmpl};
+
+    auto result1 = fmt.formatChat(systemChat, true);
+    auto result2 = fmt.formatChat(userChat, true);
+    auto result3 = fmt.formatChat(asssistantChat, true);
+
+    auto result1Len = result1.size() > std::string("system").size() ? result1.size() - std::string("system").size() : result1.size();
+    auto result2Len = result2.size() > std::string("user").size() ? result2.size() - std::string("user").size() : result2.size();
+    auto result3Len = result3.size() > std::string("assistant").size() ? result3.size() - std::string("assistant").size() : result3.size();
+    auto max = std::max(result1Len, std::max(result2Len, result3Len));
+
+    return max;
+}
 
 TEST_CASE("apply") {
     const std::vector<ac::llama::ChatMsg> chat = {
