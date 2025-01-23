@@ -6,9 +6,6 @@
 #include <doctest/doctest.h>
 #include <vector>
 
-#include <iostream>
-
-
 // All supported chat templates in
 // the list is taken from llama-chat.cpp:27
 constexpr std::array LLAMA_CHAT_TEMPLATES = {
@@ -247,11 +244,12 @@ TEST_CASE("apply") {
         visit(tpl);
     }
 
-    for (size_t i = 0; i < LLAMA_CHAT_TEMPLATES.size(); i++) {
-        if (!visited.test(i)) {
-            std::cout << "Missing test for template: " << LLAMA_CHAT_TEMPLATES[i] << std::endl;
-        }
-    }
+    // Uncomment to check for missing tests if the next CHECK fails
+    // for (size_t i = 0; i < LLAMA_CHAT_TEMPLATES.size(); i++) {
+    //     if (!visited.test(i)) {
+    //         std::cout << "Missing test for template: " << LLAMA_CHAT_TEMPLATES[i] << std::endl;
+    //     }
+    // }
     CHECK(visited.all());
 }
 
