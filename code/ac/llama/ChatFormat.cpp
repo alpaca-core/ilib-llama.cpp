@@ -120,6 +120,18 @@ ChatFormat::ChatFormat(std::string tpl)
     }
 }
 
+const char* ChatFormat::templateId() const noexcept {
+    auto supportedTemplates = getSupportedTemplates();
+
+    for (auto& tmpl : supportedTemplates) {
+        if (llm_chat_template_from_str(tmpl) == llm_chat_template(m_templateId)) {
+            return tmpl;
+        }
+    }
+
+    return "";
+}
+
 std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const {
     auto [lchat, size] = fromChatMsg(chat);
     return apply(lchat, size, addAssistantPrompt);
@@ -141,6 +153,18 @@ std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> h
     // apply diff
     // ret += fmtNew.substr(fmtHistory.size());
     return ret;
+}
+
+std::vector<const char*> ChatFormat::getSupportedTemplates() {
+    std::vector<const char*> templates;
+
+    int res = llama_chat_builtin_templates(nullptr, 0);
+    assert(res > 0);
+
+    templates.resize(res);
+    res = llama_chat_builtin_templates(templates.data(), templates.size());
+
+    return templates;
 }
 
 std::string ChatFormat::apply(std::span<const llama_chat_message> chat, size_t size, bool addAssistantPrompt) const {
