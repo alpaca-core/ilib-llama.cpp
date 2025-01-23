@@ -64,50 +64,11 @@ static const std::map<llm_chat_template, uint32_t>::value_type MAX_SINGLE_MESSAG
     { LLM_CHAT_TEMPLATE_MEGREZ ,            60 },
 };
 
-static const std::map<llm_chat_template, bool>::value_type HAS_SINGLE_MESSAGE_NEWLINE_DATA[] = {
-    { LLM_CHAT_TEMPLATE_CHATML ,            true },
-    { LLM_CHAT_TEMPLATE_LLAMA_2,            false },
-    { LLM_CHAT_TEMPLATE_LLAMA_2_SYS,        false },
-    { LLM_CHAT_TEMPLATE_LLAMA_2_SYS_BOS,    false },
-    { LLM_CHAT_TEMPLATE_LLAMA_2_SYS_STRIP,  false },
-    { LLM_CHAT_TEMPLATE_MISTRAL_V1 ,        false },
-    { LLM_CHAT_TEMPLATE_MISTRAL_V3 ,        false },
-    { LLM_CHAT_TEMPLATE_MISTRAL_V3_TEKKEN , false },
-    { LLM_CHAT_TEMPLATE_MISTRAL_V7 ,        false },
-    { LLM_CHAT_TEMPLATE_PHI_3,              false },
-    { LLM_CHAT_TEMPLATE_PHI_4,              false },
-    { LLM_CHAT_TEMPLATE_FALCON_3,           false },
-    { LLM_CHAT_TEMPLATE_ZEPHYR ,            false },
-    { LLM_CHAT_TEMPLATE_MONARCH ,           false },
-    { LLM_CHAT_TEMPLATE_GEMMA ,             true },
-    { LLM_CHAT_TEMPLATE_ORION ,             false },
-    { LLM_CHAT_TEMPLATE_OPENCHAT ,          false },
-    { LLM_CHAT_TEMPLATE_VICUNA ,            false },
-    { LLM_CHAT_TEMPLATE_VICUNA_ORCA ,       false },
-    { LLM_CHAT_TEMPLATE_DEEPSEEK ,          false },
-    { LLM_CHAT_TEMPLATE_DEEPSEEK_2,         false },
-    { LLM_CHAT_TEMPLATE_DEEPSEEK_3,         false },
-    { LLM_CHAT_TEMPLATE_COMMAND_R ,         false },
-    { LLM_CHAT_TEMPLATE_LLAMA_3,            false },
-    { LLM_CHAT_TEMPLATE_CHATGML_3,          false },
-    { LLM_CHAT_TEMPLATE_CHATGML_4,          false },
-    { LLM_CHAT_TEMPLATE_MINICPM ,           false },
-    { LLM_CHAT_TEMPLATE_EXAONE_3,           false },
-    { LLM_CHAT_TEMPLATE_RWKV_WORLD ,        false },
-    { LLM_CHAT_TEMPLATE_GRANITE ,           false },
-    { LLM_CHAT_TEMPLATE_GIGACHAT ,          false },
-    { LLM_CHAT_TEMPLATE_MEGREZ ,            false },
-};
-
 static const std::map<llm_chat_template, uint32_t> MAX_SINGLE_MESSAGE_TEMPLATE_SIZE(
     std::begin(MAX_SINGLE_MESSAGE_TEMPLATE_SIZE_DATA), std::end(MAX_SINGLE_MESSAGE_TEMPLATE_SIZE_DATA));
 
-static const std::map<llm_chat_template, bool> HAS_SINGLE_MESSAGE_NEWLINE(
-    std::begin(HAS_SINGLE_MESSAGE_NEWLINE_DATA), std::end(HAS_SINGLE_MESSAGE_NEWLINE_DATA));
-
 // Check if we have sizes for all supported templates
 static_assert(std::size(MAX_SINGLE_MESSAGE_TEMPLATE_SIZE_DATA) == size_t(LLM_CHAT_TEMPLATE_UNKNOWN));
-static_assert(std::size(HAS_SINGLE_MESSAGE_NEWLINE_DATA) == size_t(LLM_CHAT_TEMPLATE_UNKNOWN));
 
 } // namespace
 
@@ -138,20 +99,27 @@ std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssist
 }
 
 std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const {
+    if (history.empty()) {
+        return formatChat({&msg, 1}, addAssistantPrompt);
+    }
+
+    auto [lchat, size] = fromChatMsg(history.subspan(history.size() - 1, 1));
+    auto fmtHistory = apply(lchat, size, addAssistantPrompt);
+
     std::string ret;
 
     // if the formatted past messages end with a newline,
     // we must preserve it
-    if (history.size() && addAssistantPrompt && HAS_SINGLE_MESSAGE_NEWLINE.at(llm_chat_template(m_templateId))) {
+    if (addAssistantPrompt && fmtHistory.ends_with('\n')) {
         ret = "\n";
-    };
-    auto [lchat, size ] = std::pair<std::vector<llama_chat_message>, size_t>();
+    }
+
     lchat.push_back({msg.role.c_str(), msg.text.c_str()});
     size += msg.role.size() + msg.text.size();
-    ret += apply(lchat, size, addAssistantPrompt);
+    auto fmtNew = apply(lchat, size, addAssistantPrompt);
 
     // apply diff
-    // ret += fmtNew.substr(fmtHistory.size());
+    ret += fmtNew.substr(fmtHistory.size());
     return ret;
 }
 
