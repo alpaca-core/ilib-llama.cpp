@@ -15,6 +15,7 @@ public:
     explicit ChatFormat(std::string tpl);
 
     const std::string& tpl() const noexcept { return m_template; }
+    const char* templateId() const noexcept;
 
     // wrapper around llama_chat_apply_template
     // throw an error on unsupported template
@@ -22,6 +23,8 @@ public:
 
     // format single message taking history into account
     std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const;
+
+    static std::vector<const char*> getSupportedTemplates();
 
 private:
     std::string apply(std::span<const llama_chat_message> chat, size_t chatSize, bool addAssistantPrompt) const;
