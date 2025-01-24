@@ -39,6 +39,13 @@ init_ac_plugin_option(LLAMA)
 
 add_ac_local(0.1.20)
 
+CPMAddPackage(
+    NAME jinja2cpp
+    VERSION 1.0.0
+    GIT_REPOSITORY https://github.com/alpaca-core/Jinja2Cpp.git
+    GIT_TAG 17fb002c325eba2af8c03210e89b63324194e796
+)
+
 #######################################
 # submodule and config
 

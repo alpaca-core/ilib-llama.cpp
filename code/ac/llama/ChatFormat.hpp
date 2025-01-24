@@ -6,6 +6,8 @@
 #include "ChatMsg.hpp"
 #include <span>
 
+#include <jinja2cpp/template.h>
+
 struct llama_chat_message;
 
 namespace ac::llama {
@@ -19,10 +21,10 @@ public:
 
     // wrapper around llama_chat_apply_template
     // throw an error on unsupported template
-    std::string formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const;
+    std::string formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt = false);
 
     // format single message taking history into account
-    std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const;
+    std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt = false);
 
     static std::vector<const char*> getSupportedTemplates();
 
@@ -31,5 +33,6 @@ private:
 
     std::string m_template;
     int m_templateId;
+    jinja2::Template m_jTemplate;
 };
 } // namespace ac::llama

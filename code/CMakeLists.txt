@@ -11,6 +11,7 @@ target_link_libraries(ac-llama
     PUBLIC
         ac::astl
         ac::local
+        jinja2cpp
 )
 target_sources(ac-llama
     INTERFACE FILE_SET HEADERS FILES

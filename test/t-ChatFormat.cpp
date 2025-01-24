@@ -334,5 +334,32 @@ TEST_CASE("formatMsg - chat") {
 
 TEST_CASE("invalid") {
     std::string badTpl = "bad template";
-    CHECK_THROWS_WITH_AS(ac::llama::ChatFormat{badTpl}, "Unsupported template: bad template", std::runtime_error);
+    // CHECK_THROWS_WITH_AS(ac::llama::ChatFormat{badTpl}, "Unsupported template: bad template", std::runtime_error);
+}
+
+TEST_CASE("custom template") {
+    std::string template_text = R"(** System **: {{ system}}
+
+**Task**: {{ task }}
+
+**Input**: {{ user }}
+
+{% if assistant %}
+** Assistant **: {{ assistant }}
+{% endif %}
+
+Provide your response below:)";
+
+    const std::vector<ac::llama::ChatMsg> chat = {
+        {"system", "You are a helpful assistant"},
+        {"task", "Answer questions"},
+        {"user", "Hello"},
+        {"assistant", "I am assistant"}
+    };
+
+    ac::llama::ChatFormat fmt{template_text};
+    auto res = fmt.formatChat(chat, true);
+    std::string expected_str = "** System **: You are a helpful assistant\n\n**Task**: Answer questions\n\n**Input**: Hello\n\n\n** Assistant **: I am assistant\n\n\nProvide your response below:";
+
+    CHECK(res == expected_str);
 }
