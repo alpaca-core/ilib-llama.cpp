@@ -79,28 +79,43 @@ ChatFormat::ChatFormat(std::string tpl)
     , m_templateId(llm_chat_detect_template(m_template))
 {
     if (m_templateId == LLM_CHAT_TEMPLATE_UNKNOWN) {
-        throw_ex{} << "Unsupported template: " << m_template;
+        auto parse_result = m_jTemplate.Load(m_template);
+        if (!parse_result) {
+            throw_ex{} << "Unsupported template: " << m_template;
+        }
     }
 }
 
 const char* ChatFormat::templateId() const noexcept {
-    auto supportedTemplates = getSupportedTemplates();
+    if (m_templateId != LLM_CHAT_TEMPLATE_UNKNOWN) {
+        auto supportedTemplates = getSupportedTemplates();
 
-    for (auto& tmpl : supportedTemplates) {
-        if (llm_chat_template_from_str(tmpl) == llm_chat_template(m_templateId)) {
-            return tmpl;
+        for (auto& tmpl : supportedTemplates) {
+            if (llm_chat_template_from_str(tmpl) == llm_chat_template(m_templateId)) {
+                return tmpl;
+            }
         }
     }
 
-    return "";
+    return "custom";
 }
 
-std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const {
-    auto [lchat, size] = fromChatMsg(chat);
-    return apply(lchat, size, addAssistantPrompt);
+std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) {
+    if (m_templateId != LLM_CHAT_TEMPLATE_UNKNOWN) {
+        auto [lchat, size] = fromChatMsg(chat);
+        return apply(lchat, size, addAssistantPrompt);
+    }
+
+    jinja2::ValuesMap data;
+    for (auto& msg : chat) {
+        data[msg.role] = msg.text;
+    }
+
+    auto render_result = m_jTemplate.RenderAsString(data);
+    return render_result.value();
 }
 
-std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const {
+std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) {
     if (history.empty()) {
         return formatChat({&msg, 1}, addAssistantPrompt);
     }
