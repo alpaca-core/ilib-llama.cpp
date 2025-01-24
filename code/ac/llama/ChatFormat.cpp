@@ -106,7 +106,7 @@ std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> h
     }
 
     auto [lchat, size] = fromChatMsg(history.subspan(history.size() - 1, 1));
-    auto fmtHistory = apply(lchat, size, addAssistantPrompt);
+    auto fmtHistory = apply(lchat, size, false);
 
     std::string ret;
 
@@ -152,7 +152,7 @@ std::string ChatFormat::apply(std::span<const llama_chat_message> chat, size_t s
     if (res > int32_t(fmt.size())) {
         // The assert should never happen, the case when it might occur is
         // - not updated value in MAX_SINGLE_MESSAGE_TEMPLATE_SIZE, because a template has been changed in llama.cpp
-        //assert(false && "The max template size is not calculated properly! Will re-run the template with the correct size.");
+        assert(false && "The max template size is not calculated properly! Will re-run the template with the correct size.");
         // optimistic size was not enough
         fmt.resize(res);
         res = llama_chat_apply_template(m_template.c_str(), chat.data(), chat.size(),
