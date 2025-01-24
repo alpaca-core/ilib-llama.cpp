@@ -10,6 +10,7 @@ target_link_libraries(ac-llama
         ac::jalog
     PUBLIC
         ac::astl
+        jinja2cpp
 )
 target_sources(ac-llama PRIVATE
     ac/llama/export.h
