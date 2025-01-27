@@ -294,7 +294,7 @@ public:
         }, astl::move(modelParams));
     }
 
-    virtual frameio::SessionHandlerPtr createSessionHandler(std::string_view) {
+    virtual frameio::SessionHandlerPtr createSessionHandler(std::string_view) override {
         return {};
     }
 };
