@@ -10,10 +10,10 @@
 
 #include <ac/local/Instance.hpp>
 #include <ac/local/Model.hpp>
-#include <ac/local/ModelLoader.hpp>
+#include <ac/local/Provider.hpp>
 
 #include <ac/schema/LlamaCpp.hpp>
-#include <ac/schema/DispatchHelpers.hpp>
+#include <ac/local/schema/DispatchHelpers.hpp>
 
 #include <astl/move.hpp>
 #include <astl/move_capture.hpp>
@@ -38,7 +38,7 @@ class ChatSession {
     bool m_addUserPrefix = true;
     bool m_addAssistantPrefix = true;
 public:
-    using Interface = ac::local::schema::LlamaCppInterface;
+    using Interface = ac::schema::LlamaCppInterface;
 
     ChatSession(llama::Instance& instance, Interface::OpChatBegin::Params& params)
         : m_session(instance.startSession({}))
@@ -134,8 +134,8 @@ class LlamaInstance final : public Instance {
 
     schema::OpDispatcherData m_dispatcherData;
 public:
-    using Schema = ac::local::schema::LlamaCppLoader::InstanceGeneral;
-    using Interface = ac::local::schema::LlamaCppInterface;
+    using Schema = ac::schema::LlamaCppProvider::InstanceGeneral;
+    using Interface = ac::schema::LlamaCppInterface;
 
     LlamaInstance(std::shared_ptr<llama::Model> model, const ac::llama::ControlVector& ctrlVector, llama::Instance::InitParams params)
         : m_model(astl::move(model))
@@ -210,7 +210,7 @@ public:
 };
 
 class LlamaModel final : public Model {
-    using Schema = ac::local::schema::LlamaCppLoader;
+    using Schema = ac::schema::LlamaCppProvider;
 
     std::shared_ptr<llama::Model> m_model;
     std::vector<ac::llama::ControlVector::LoadInfo> m_ctrlVectors;
@@ -257,7 +257,7 @@ public:
     }
 };
 
-class LlamaModelLoader final : public ModelLoader {
+class LlamaProvider final : public Provider {
 public:
     virtual const Info& info() const noexcept override {
         static Info i = {
@@ -293,6 +293,10 @@ public:
             }
         }, astl::move(modelParams));
     }
+
+    virtual frameio::SessionHandlerPtr createSessionHandler(std::string_view) {
+        return {};
+    }
 };
 } // namespace
 
@@ -304,9 +308,9 @@ void init() {
     initLibrary();
 }
 
-std::vector<ac::local::ModelLoaderPtr> getLoaders() {
-    std::vector<ac::local::ModelLoaderPtr> ret;
-    ret.push_back(std::make_unique<local::LlamaModelLoader>());
+std::vector<ac::local::ProviderPtr> getProviders() {
+    std::vector<ac::local::ProviderPtr> ret;
+    ret.push_back(std::make_unique<local::LlamaProvider>());
     return ret;
 }
 
@@ -319,7 +323,7 @@ local::PluginInterface getPluginInterface() {
             ACLP_llama_VERSION_MAJOR, ACLP_llama_VERSION_MINOR, ACLP_llama_VERSION_PATCH
         },
         .init = init,
-        .getLoaders = getLoaders,
+        .getProviders = getProviders,
     };
 }
 

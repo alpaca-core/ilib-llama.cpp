@@ -7,4 +7,5 @@ target_sources(ac-llama.cpp-schema-gen PRIVATE
 )
 target_link_libraries(ac-llama.cpp-schema-gen PRIVATE
     ac::llama.cpp-schema
+    ac::local
 )

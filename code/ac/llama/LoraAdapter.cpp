@@ -5,6 +5,7 @@
 #include "Model.hpp"
 
 #include <llama.h>
+#include <stdexcept>
 
 namespace ac::llama {
 

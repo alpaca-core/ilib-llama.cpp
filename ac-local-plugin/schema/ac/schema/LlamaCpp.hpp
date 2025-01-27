@@ -8,7 +8,7 @@
 #include <string>
 #include <tuple>
 
-namespace ac::local::schema {
+namespace ac::schema {
 
 struct LlamaCppInterface {
     static inline constexpr std::string_view id = "llama.cpp";
@@ -96,7 +96,7 @@ struct LlamaCppInterface {
     using Ops = std::tuple<OpRun, OpChatBegin, OpAddChatPrompt, OpGetChatResponse>;
 };
 
-struct LlamaCppLoader {
+struct LlamaCppProvider {
     static inline constexpr std::string_view id = "llama.cpp";
     static inline constexpr std::string_view description = "Inference based on our fork of https://github.com/ggerganov/llama.cpp";
 

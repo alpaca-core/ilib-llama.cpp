@@ -6,6 +6,7 @@
 #include "Sampler.hpp"
 #include "Session.hpp"
 #include <astl/mem_ext.hpp>
+#include <optional>
 
 struct llama_context;
 
