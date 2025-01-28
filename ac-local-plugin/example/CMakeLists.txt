@@ -9,7 +9,6 @@ function(add_llama_plugin_example name)
         ac::jalog
         ac-test-data::llama
         aclp::llama-info
-        aclp::llama-plib
     )
     set_target_properties(${tgt} PROPERTIES FOLDER example)
 endfunction()

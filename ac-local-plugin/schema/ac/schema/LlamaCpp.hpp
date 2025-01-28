@@ -61,6 +61,14 @@ struct LlamaCppInterface {
         using Return = nullptr_t;
     };
 
+    struct OpChatEnd {
+        static inline constexpr std::string_view id = "end-chat";
+        static inline constexpr std::string_view description = "End a chat session";
+
+        using Params = nullptr_t;
+        using Return = nullptr_t;
+    };
+
     struct OpAddChatPrompt {
         static inline constexpr std::string_view id = "add-chat-prompt";
         static inline constexpr std::string_view description = "Add a prompt to the chat session as a user";
@@ -93,7 +101,7 @@ struct LlamaCppInterface {
         };
     };
 
-    using Ops = std::tuple<OpRun, OpChatBegin, OpAddChatPrompt, OpGetChatResponse>;
+    using Ops = std::tuple<OpRun, OpChatBegin, OpChatEnd, OpAddChatPrompt, OpGetChatResponse>;
 };
 
 struct LlamaCppProvider {
@@ -107,9 +115,9 @@ struct LlamaCppProvider {
         static inline constexpr std::string_view description = "General instance";
 
         struct Params {
-            Field<uint32_t> ctxSize = std::nullopt;
-            Field<uint32_t> batchSize = std::nullopt;
-            Field<uint32_t> ubatchSize = std::nullopt;
+            Field<uint32_t> ctxSize = Default(0);
+            Field<uint32_t> batchSize = Default(2048);
+            Field<uint32_t> ubatchSize = Default(512);
 
             template <typename Visitor>
             void visitFields(Visitor& v) {
