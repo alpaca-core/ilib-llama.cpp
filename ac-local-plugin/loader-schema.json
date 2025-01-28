@@ -1,29 +1,72 @@
 {
   "id": "llama.cpp",
   "description": "Inference based on our fork of https://github.com/ggerganov/llama.cpp",
-  "params": {
-    "type": "null"
-  },
-  "instances": {
-    "general": {
-      "description": "General instance",
-      "params": {
-        "type": "object",
-        "properties": {
-          "ctx_size": {
-            "type": "integer",
-            "description": "Size of the context"
+  "states": [
+    {
+      "id": "initial",
+      "description": "Initial state",
+      "ops": {
+        "load-model": {
+          "description": "Load the llama.cpp model",
+          "params": {
+            "type": "object",
+            "properties": {
+              "gguf": {
+                "type": "string",
+                "description": "Optional path to the file with model data."
+              }
+            }
           },
-          "batch_size": {
-            "type": "integer",
-            "description": "Size of the single batch"
-          },
-          "ubatch_size": {
-            "type": "integer",
-            "description": "Size of the context"
+          "return": {
+            "type": "null"
           }
         }
       },
+      "ins": null,
+      "outs": null
+    },
+    {
+      "id": "model-loaded",
+      "description": "Model loaded state",
+      "ops": {
+        "start-instance": {
+          "description": "Start a new instance of the llama.cpp model",
+          "params": {
+            "type": "object",
+            "properties": {
+              "instance_type": {
+                "type": "string",
+                "description": "Type of the instance to start",
+                "default": "general"
+              },
+              "ctx_size": {
+                "type": "integer",
+                "description": "Size of the context",
+                "default": 0
+              },
+              "batch_size": {
+                "type": "integer",
+                "description": "Size of the single batch",
+                "default": 2048
+              },
+              "ubatch_size": {
+                "type": "integer",
+                "description": "Size of the context",
+                "default": 512
+              }
+            }
+          },
+          "return": {
+            "type": "null"
+          }
+        }
+      },
+      "ins": null,
+      "outs": null
+    },
+    {
+      "id": "instance",
+      "description": "Instance state",
       "ops": {
         "run": {
           "description": "Run the llama.cpp inference and produce some output",
@@ -91,6 +134,15 @@
             "type": "null"
           }
         },
+        "end-chat": {
+          "description": "End a chat session",
+          "params": {
+            "type": "null"
+          },
+          "return": {
+            "type": "null"
+          }
+        },
         "add-chat-prompt": {
           "description": "Add a prompt to the chat session as a user",
           "params": {
@@ -125,7 +177,9 @@
             ]
           }
         }
-      }
+      },
+      "ins": null,
+      "outs": null
     }
-  }
+  ]
 }
