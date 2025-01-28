@@ -10,13 +10,72 @@
 
 namespace ac::schema {
 
-struct LlamaCppInterface {
-    static inline constexpr std::string_view id = "llama.cpp";
-    static inline constexpr std::string_view description = "ilib-llama.cpp-specific interface";
+inline namespace llama {
+
+struct StateInitial {
+    static constexpr auto id = "initial";
+    static constexpr auto desc = "Initial state";
+
+    struct OpLoadModel {
+        static constexpr auto id = "load-model";
+        static constexpr auto desc = "Load the llama.cpp model";
+
+        struct Params{
+            Field<std::string> ggufPath = std::nullopt;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(ggufPath, "gguf", "Optional path to the file with model data.");
+            }
+        };
+
+        using Return = nullptr_t;
+    };
+
+    using Ops = std::tuple<OpLoadModel>;
+    using Ins = std::tuple<>;
+    using Outs = std::tuple<>;
+};
+
+
+struct StateModelLoaded {
+    static constexpr auto id = "model-loaded";
+    static constexpr auto desc = "Model loaded state";
+
+    struct OpStartInstance {
+        static constexpr auto id = "start-instance";
+        static constexpr auto desc = "Start a new instance of the llama.cpp model";
+
+        struct Params {
+            Field<std::string> instanceType = Default("general");
+            Field<uint32_t> ctxSize = Default(0);
+            Field<uint32_t> batchSize = Default(2048);
+            Field<uint32_t> ubatchSize = Default(512);
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(instanceType, "instance_type", "Type of the instance to start");
+                v(ctxSize, "ctx_size", "Size of the context");
+                v(batchSize, "batch_size", "Size of the single batch");
+                v(ubatchSize, "ubatch_size", "Size of the context");
+            }
+        };
+
+        using Return = nullptr_t;
+    };
+
+    using Ops = std::tuple<OpStartInstance>;
+    using Ins = std::tuple<>;
+    using Outs = std::tuple<>;
+};
+
+struct StateInstance {
+    static constexpr auto id = "instance";
+    static constexpr auto desc = "Instance state";
 
     struct OpRun {
         static inline constexpr std::string_view id = "run";
-        static inline constexpr std::string_view description = "Run the llama.cpp inference and produce some output";
+        static inline constexpr std::string_view desc = "Run the llama.cpp inference and produce some output";
 
         struct Params {
             Field<std::string> prompt;
@@ -41,9 +100,10 @@ struct LlamaCppInterface {
         };
     };
 
+
     struct OpChatBegin {
         static inline constexpr std::string_view id = "begin-chat";
-        static inline constexpr std::string_view description = "Begin a chat session";
+        static inline constexpr std::string_view desc = "Begin a chat session";
 
         struct Params {
             Field<std::string> setup = Default();
@@ -63,7 +123,7 @@ struct LlamaCppInterface {
 
     struct OpChatEnd {
         static inline constexpr std::string_view id = "end-chat";
-        static inline constexpr std::string_view description = "End a chat session";
+        static inline constexpr std::string_view desc = "End a chat session";
 
         using Params = nullptr_t;
         using Return = nullptr_t;
@@ -71,7 +131,7 @@ struct LlamaCppInterface {
 
     struct OpAddChatPrompt {
         static inline constexpr std::string_view id = "add-chat-prompt";
-        static inline constexpr std::string_view description = "Add a prompt to the chat session as a user";
+        static inline constexpr std::string_view desc = "Add a prompt to the chat session as a user";
 
         struct Params {
             Field<std::string> prompt = Default();
@@ -87,7 +147,7 @@ struct LlamaCppInterface {
 
     struct OpGetChatResponse {
         static inline constexpr std::string_view id = "get-chat-response";
-        static inline constexpr std::string_view description = "Get a response from the chat session";
+        static inline constexpr std::string_view desc = "Get a response from the chat session";
 
         using Params = nullptr_t;
 
@@ -102,35 +162,17 @@ struct LlamaCppInterface {
     };
 
     using Ops = std::tuple<OpRun, OpChatBegin, OpChatEnd, OpAddChatPrompt, OpGetChatResponse>;
+    using Ins = std::tuple<>;
+    using Outs = std::tuple<>;
 };
 
-struct LlamaCppProvider {
+struct Interface {
     static inline constexpr std::string_view id = "llama.cpp";
-    static inline constexpr std::string_view description = "Inference based on our fork of https://github.com/ggerganov/llama.cpp";
+    static inline constexpr std::string_view desc = "Inference based on our fork of https://github.com/ggerganov/llama.cpp";
 
-    using Params = nullptr_t;
-
-    struct InstanceGeneral {
-        static inline constexpr std::string_view id = "general";
-        static inline constexpr std::string_view description = "General instance";
-
-        struct Params {
-            Field<uint32_t> ctxSize = Default(0);
-            Field<uint32_t> batchSize = Default(2048);
-            Field<uint32_t> ubatchSize = Default(512);
-
-            template <typename Visitor>
-            void visitFields(Visitor& v) {
-                v(ctxSize, "ctx_size", "Size of the context");
-                v(batchSize, "batch_size", "Size of the single batch");
-                v(ubatchSize, "ubatch_size", "Size of the context");
-            }
-        };
-
-        using Interfaces = std::tuple<LlamaCppInterface>;
-    };
-
-    using Instances = std::tuple<InstanceGeneral>;
+    using States = std::tuple<StateInitial, StateModelLoaded, StateInstance>;
 };
+
+} // namespace llama
 
 } // namespace ac::local::schema

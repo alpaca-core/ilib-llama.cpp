@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 //
 #include <ac/schema/LlamaCpp.hpp>
-#include <ac/local/schema/GenerateProviderSchemaDict.hpp>
+#include <ac/schema/GenerateSchemaDict.hpp>
 #include <iostream>
 
 int main() {
-    auto d = ac::schema::generateProviderSchema<acnl::ordered_json, ac::schema::LlamaCppProvider>();
+    auto d = Interface_generateSchemaDict<acnl::ordered_json>(ac::schema::llama::Interface{});
     std::cout << d.dump(2) << std::endl;
     return 0;
 }
