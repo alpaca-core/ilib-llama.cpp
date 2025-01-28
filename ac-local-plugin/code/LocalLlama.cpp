@@ -295,8 +295,6 @@ SessionCoro<void> Llama_runSession() {
     catch (coro::IoClosed&) {
         co_return;
     }
-
-    co_return;
 }
 
 
