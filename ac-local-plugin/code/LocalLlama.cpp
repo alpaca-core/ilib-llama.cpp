@@ -8,14 +8,13 @@
 #include <ac/llama/AntipromptManager.hpp>
 #include <ac/llama/ControlVector.hpp>
 
-#include <ac/local/Instance.hpp>
-#include <ac/local/Model.hpp>
 #include <ac/local/Provider.hpp>
 
 #include <ac/schema/LlamaCpp.hpp>
-#include <ac/local/schema/DispatchHelpers.hpp>
+#include <ac/schema/OpDispatchHelpers.hpp>
 
 #include <ac/frameio/SessionCoro.hpp>
+#include <ac/FrameUtil.hpp>
 
 #include <astl/move.hpp>
 #include <astl/move_capture.hpp>
@@ -30,6 +29,28 @@ namespace ac::local {
 
 namespace {
 
+namespace sc = schema::llama;
+using namespace ac::frameio;
+
+struct BasicRunner {
+    schema::OpDispatcherData m_dispatcherData;
+
+    Frame dispatch(Frame& f) {
+        try {
+            auto ret = m_dispatcherData.dispatch(f.op, std::move(f.data));
+            if (!ret) {
+                throw_ex{} << "dummy: unknown op: " << f.op;
+            }
+            return {f.op, *ret};
+        }
+        catch (coro::IoClosed&) {
+            throw;
+        }
+        catch (std::exception& e) {
+            return {"error", e.what()};
+        }
+    }
+};
 
 class ChatSession {
     llama::Session& m_session;
@@ -43,9 +64,9 @@ class ChatSession {
     bool m_addUserPrefix = true;
     bool m_addAssistantPrefix = true;
 public:
-    using Interface = ac::schema::LlamaCppInterface;
+    using Schema = sc::StateInstance;
 
-    ChatSession(llama::Instance& instance, Interface::OpChatBegin::Params& params)
+    ChatSession(llama::Instance& instance, Schema::OpChatBegin::Params& params)
         : m_session(instance.startSession({}))
         , m_vocab(instance.model().vocab())
         , m_instance(instance)
@@ -65,7 +86,7 @@ public:
         m_instance.stopSession();
     }
 
-    void pushPrompt(Interface::OpAddChatPrompt::Params& params) {
+    void pushPrompt(Schema::OpAddChatPrompt::Params& params) {
         auto& prompt = params.prompt.value();
 
         // prefix with space as the generated content doesn't include it
@@ -85,7 +106,7 @@ public:
         m_addAssistantPrefix = false;
     }
 
-    Interface::OpGetChatResponse::Return getResponse() {
+    Schema::OpGetChatResponse::Return getResponse() {
         if (m_addAssistantPrefix) {
             // generated responses are requested first, but we haven't yet fed the assistant prefix to the model
             auto prompt = m_assistantPrefix;
@@ -98,7 +119,7 @@ public:
         ac::llama::IncrementalStringFinder finder(m_userPrefix);
 
         m_addUserPrefix = true;
-        Interface::OpGetChatResponse::Return ret;
+        Schema::OpGetChatResponse::Return ret;
         auto& response = ret.response.materialize();
 
 
@@ -135,38 +156,20 @@ public:
     }
 };
 
-using Schema = schema::LlamaCppProvider;
-
-llama::Model::Params ModelParams_fromDict(Dict&) {
-    llama::Model::Params ret;
-    return ret;
-}
-
-static llama::Instance::InitParams InitParams_fromDict(Dict&& d) {
-    auto schemaParams = schema::Struct_fromDict<Schema::InstanceGeneral::Params>(astl::move(d));
-    llama::Instance::InitParams ret;
-    ret.batchSize = schemaParams.batchSize;
-    ret.ctxSize = schemaParams.ctxSize;
-    ret.ubatchSize = schemaParams.ubatchSize;
-    return ret;
-}
-
-using namespace ac::frameio;
-
 SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance> instance) {
-    struct Runner {
-        llama::Instance& m_instance;
-        schema::OpDispatcherData m_dispatcherData;
+    using Schema = sc::StateInstance;
 
+    struct Runner : public BasicRunner {
+        llama::Instance& m_instance;
         std::optional<ChatSession> m_chatSession;
 
-        using Interface = ac::schema::LlamaCppInterface;
-
-        Runner(llama::Instance& instance) : m_instance(instance) {
-            schema::registerHandlers<Interface::Ops>(m_dispatcherData, *this);
+        Runner(llama::Instance& instance)
+            : m_instance(instance)
+        {
+            schema::registerHandlers<Schema::Ops>(m_dispatcherData, *this);
         }
 
-        Interface::OpRun::Return on(Interface::OpRun, Interface::OpRun::Params&& params) {
+        Schema::OpRun::Return on(Schema::OpRun, Schema::OpRun::Params&& params) {
             if (m_chatSession) {
                 throw_ex{} << "llama: chat already started";
             }
@@ -186,7 +189,7 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
                 antiprompt.addAntiprompt(ap);
             }
 
-            Interface::OpRun::Return ret;
+            Schema::OpRun::Return ret;
             auto& result = ret.result.materialize();
             for (unsigned int i = 0; i < maxTokens; ++i) {
                 auto t = s.getToken();
@@ -207,17 +210,17 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
             return ret;
         }
 
-        Interface::OpChatBegin::Return on(Interface::OpChatBegin, Interface::OpChatBegin::Params&& params) {
+        Schema::OpChatBegin::Return on(Schema::OpChatBegin, Schema::OpChatBegin::Params&& params) {
             m_chatSession.emplace(m_instance, params);
             return {};
         }
 
-        Interface::OpChatEnd::Return on(Interface::OpChatEnd, Interface::OpChatEnd::Params&&) {
+        Schema::OpChatEnd::Return on(Schema::OpChatEnd, Schema::OpChatEnd::Params&&) {
             m_chatSession.reset();
             return {};
         }
 
-        Interface::OpAddChatPrompt::Return on(Interface::OpAddChatPrompt, Interface::OpAddChatPrompt::Params&& params) {
+        Schema::OpAddChatPrompt::Return on(Schema::OpAddChatPrompt, Schema::OpAddChatPrompt::Params&& params) {
             if (!m_chatSession) {
                 throw_ex{} << "llama: chat not started";
             }
@@ -225,215 +228,108 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
             return {};
         }
 
-        Interface::OpGetChatResponse::Return on(Interface::OpGetChatResponse, Interface::OpGetChatResponse::Params&&) {
+        Schema::OpGetChatResponse::Return on(Schema::OpGetChatResponse, Schema::OpGetChatResponse::Params&&) {
             if (!m_chatSession) {
                 throw_ex{} << "llama: chat not started";
             }
             return m_chatSession->getResponse();
         }
-
-        Frame dispatch(Frame& f) {
-            auto ret = m_dispatcherData.dispatch(f.op, std::move(f.data));
-            if (!ret) {
-                throw_ex{} << "dummy: unknown op: " << f.op;
-            }
-            return {f.op, *ret};
-        }
     };
 
-    Runner runner(*instance);
+    co_await io.pushFrame(Frame_stateChange(Schema::id));
 
-    while (true) {
+    Runner runner(*instance);
+    while (true)
+    {
         auto f = co_await io.pollFrame();
         co_await io.pushFrame(runner.dispatch(f.frame));
     }
 }
 
 SessionCoro<void> Llama_runModel(coro::Io io, std::unique_ptr<llama::Model> model) {
-    auto f = co_await io.pollFrame();
+    using Schema = sc::StateModelLoaded;
 
-    if (f.frame.op != "create") {
-        throw_ex{} << "dummy: expected 'create' op, got: " << f.frame.op;
+    struct Runner : public BasicRunner {
+        Runner(llama::Model& model)
+            : lmodel(model)
+        {
+            schema::registerHandlers<Schema::Ops>(m_dispatcherData, *this);
+        }
+
+        llama::Model& lmodel;
+        std::unique_ptr<llama::Instance> instance;
+
+        static llama::Instance::InitParams InstanceParams_fromSchema(sc::StateModelLoaded::OpStartInstance::Params) {
+            llama::Instance::InitParams ret;
+            return ret;
+        }
+
+        Schema::OpStartInstance::Return on(Schema::OpStartInstance, Schema::OpStartInstance::Params params) {
+            instance = std::make_unique<llama::Instance>(lmodel, InstanceParams_fromSchema(params));
+            return {};
+        }
+    };
+
+    co_await io.pushFrame(Frame_stateChange(Schema::id));
+
+    Runner runner(*model);
+    while (true)
+    {
+        auto f = co_await io.pollFrame();
+        co_await io.pushFrame(runner.dispatch(f.frame));
+        if (runner.instance) {
+            co_await Llama_runInstance(io, std::move(runner.instance));
+        }
     }
-    auto params = InitParams_fromDict(astl::move(f.frame.data));
-    co_await Llama_runInstance(io, std::make_unique<llama::Instance>(*model, astl::move(params)));
 }
 
 SessionCoro<void> Llama_runSession() {
-    std::optional<Frame> errorFrame;
+    using Schema = sc::StateInitial;
 
-    auto io = co_await coro::Io{};
-
-    try {
-        auto f = co_await io.pollFrame();
-        if (f.frame.op != "load") {
-            throw_ex{} << "dummy: expected 'load' op, got: " << f.frame.op;
+    struct Runner : public BasicRunner {
+        Runner() {
+            schema::registerHandlers<Schema::Ops>(m_dispatcherData, *this);
         }
-        auto params = ModelParams_fromDict(f.frame.data);
-        auto gguf = ac::Dict_optValueAt(f.frame.data, "gguf", std::string());
 
-        auto model = std::make_unique<llama::Model>(
-            llama::ModelRegistry::getInstance().loadModel(gguf.c_str(), {}, params),
-            astl::move(params));
+        std::unique_ptr<llama::Model> model;
 
-        // btodo: abort
-        co_await Llama_runModel(io, std::move(model));
-    }
-    catch (coro::IoClosed&) {
-        co_return;
-    }
-    catch (std::exception& e) {
-        errorFrame = Frame{"error", e.what()};
-        printf("error: %s\n", e.what());
-    }
+        static std::pair<std::string, llama::Model::Params> ModelParams_fromSchema(sc::StateInitial::OpLoadModel::Params schemaParams) {
+            llama::Model::Params ret;
+            auto gguf = schemaParams.ggufPath.valueOr("");
+            return {gguf, ret};
+        }
+
+        Schema::OpLoadModel::Return on(Schema::OpLoadModel, Schema::OpLoadModel::Params params) {
+            auto [gguf, lparams] = ModelParams_fromSchema(params);
+
+            model = std::make_unique<llama::Model>(
+                llama::ModelRegistry::getInstance().loadModel(gguf.c_str(), {}, lparams),
+                astl::move(lparams)
+            );
+            return {};
+        }
+    };
 
     try {
-        if (errorFrame) {
-            co_await io.pushFrame(*errorFrame);
+        auto io = co_await coro::Io{};
+
+        co_await io.pushFrame(Frame_stateChange(Schema::id));
+
+        Runner runner;
+
+        while (true)
+        {
+            auto f = co_await io.pollFrame();
+            co_await io.pushFrame(runner.dispatch(f.frame));
+            if (runner.model) {
+                co_await Llama_runModel(io, std::move(runner.model));
+            }
         }
     }
     catch (coro::IoClosed&) {
         co_return;
     }
 }
-
-
-class LlamaInstance final : public Instance {
-    std::shared_ptr<llama::Model> m_model;
-    llama::Instance m_instance;
-
-    std::optional<ChatSession> m_chatSession;
-
-    schema::OpDispatcherData m_dispatcherData;
-public:
-    using Schema = ac::schema::LlamaCppProvider::InstanceGeneral;
-    using Interface = ac::schema::LlamaCppInterface;
-
-    LlamaInstance(std::shared_ptr<llama::Model> model, const ac::llama::ControlVector& ctrlVector, llama::Instance::InitParams params)
-        : m_model(astl::move(model))
-        , m_instance(*m_model, astl::move(params))
-    {
-        m_instance.addControlVector(ctrlVector);
-        schema::registerHandlers<Interface::Ops>(m_dispatcherData, *this);
-    }
-
-    Interface::OpRun::Return on(Interface::OpRun, Interface::OpRun::Params&& params) {
-        auto& prompt = params.prompt.value();
-        const auto maxTokens = params.maxTokens.value();
-
-        auto& s = m_instance.startSession({});
-
-        auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
-        s.setInitialPrompt(promptTokens);
-
-        auto& model = m_instance.model();
-        ac::llama::AntipromptManager antiprompt;
-
-        for (auto& ap : params.antiprompts.value()) {
-            antiprompt.addAntiprompt(ap);
-        }
-
-        Interface::OpRun::Return ret;
-        auto& result = ret.result.materialize();
-        for (unsigned int i = 0; i < maxTokens; ++i) {
-            auto t = s.getToken();
-            if (t == ac::llama::Token_Invalid) {
-                break;
-            }
-
-            auto tokenStr = model.vocab().tokenToString(t);
-            if (antiprompt.feedGeneratedText(tokenStr)) {
-                break;
-            }
-
-            result += tokenStr;
-        }
-
-        return ret;
-    }
-
-    Interface::OpChatBegin::Return on(Interface::OpChatBegin, Interface::OpChatBegin::Params&& params) {
-        m_chatSession.emplace(m_instance, params);
-        return {};
-    }
-
-    Interface::OpChatEnd::Return on(Interface::OpChatEnd, Interface::OpChatEnd::Params&&) {
-        m_chatSession.reset();
-        return {};
-    }
-
-    Interface::OpAddChatPrompt::Return on(Interface::OpAddChatPrompt, Interface::OpAddChatPrompt::Params&& params) {
-        if (!m_chatSession) {
-            throw_ex{} << "llama: chat not started";
-        }
-        m_chatSession->pushPrompt(params);
-        return {};
-    }
-
-    Interface::OpGetChatResponse::Return on(Interface::OpGetChatResponse, Interface::OpGetChatResponse::Params&&) {
-        if (!m_chatSession) {
-            throw_ex{} << "llama: chat not started";
-        }
-        return m_chatSession->getResponse();
-    }
-
-    virtual Dict runOp(std::string_view op, Dict params, ProgressCb) override {
-        auto ret = m_dispatcherData.dispatch(op, astl::move(params));
-        if (!ret) {
-            throw_ex{} << "llama: unknown op: " << op;
-        }
-        return *ret;
-    }
-};
-
-class LlamaModel final : public Model {
-    using Schema = ac::schema::LlamaCppProvider;
-
-    std::shared_ptr<llama::Model> m_model;
-    std::vector<ac::llama::ControlVector::LoadInfo> m_ctrlVectors;
-
-    llama::Instance::InitParams translateInstanceParams(Dict&& params) {
-        llama::Instance::InitParams initParams;
-        auto schemaParams = schema::Struct_fromDict<Schema::InstanceGeneral::Params>(astl::move(params));
-
-        if (schemaParams.ctxSize.hasValue()) {
-            initParams.ctxSize = schemaParams.ctxSize;
-        }
-
-        if (schemaParams.batchSize.hasValue()) {
-            initParams.batchSize = schemaParams.batchSize;
-        }
-
-        if (schemaParams.ubatchSize.hasValue()) {
-            initParams.ubatchSize = schemaParams.ubatchSize;
-        }
-
-        return initParams;
-    }
-public:
-
-    LlamaModel(const std::string& gguf, std::span<std::string> loras, std::vector<llama::ControlVector::LoadInfo>& ctrlVectors, llama::ModelLoadProgressCb pcb, llama::Model::Params params)
-        : m_model(std::make_shared<llama::Model>(llama::ModelRegistry::getInstance().loadModel(gguf.c_str(), astl::move(pcb), params), astl::move(params)))
-        , m_ctrlVectors(astl::move(ctrlVectors))
-    {
-        for(auto& loraPath: loras) {
-            auto lora = llama::ModelRegistry::getInstance().loadLora(m_model.get(), loraPath);
-            m_model->addLora(lora);;
-        }
-    }
-
-    virtual std::unique_ptr<Instance> createInstance(std::string_view type, Dict params) override {
-        ac::llama::ControlVector ctrlVector(*m_model, m_ctrlVectors);
-        if (type == "general") {
-            return std::make_unique<LlamaInstance>(m_model, ctrlVector, translateInstanceParams(astl::move(params)));
-        }
-        else {
-            throw_ex{} << "llama: unknown instance type: " << type;
-            MSVC_WO_10766806();
-        }
-    }
-};
-
 class LlamaProvider final : public Provider {
 public:
     virtual const Info& info() const noexcept override {
@@ -448,27 +344,29 @@ public:
         return desc.type == "llama.cpp gguf";
     }
 
-    virtual ModelPtr loadModel(ModelAssetDesc desc, Dict, ProgressCb progressCb) override {
-        auto& gguf = desc.assets.front().path;
+    virtual ModelPtr loadModel(ModelAssetDesc , Dict, ProgressCb ) override {
+        // auto& gguf = desc.assets.front().path;
 
-        std::vector<llama::ControlVector::LoadInfo> ctrlVectors;
-        std::vector<std::string> loras;
-        for (auto& asset : desc.assets) {
-            if (asset.tag.find("control_vector:")) {
-                ctrlVectors.push_back({asset.path, 2});
-            }
-            if (asset.tag.find("lora:") != std::string::npos) {
-                loras.push_back(asset.path);
-            }
-        }
+        // std::vector<llama::ControlVector::LoadInfo> ctrlVectors;
+        // std::vector<std::string> loras;
+        // for (auto& asset : desc.assets) {
+        //     if (asset.tag.find("control_vector:")) {
+        //         ctrlVectors.push_back({asset.path, 2});
+        //     }
+        //     if (asset.tag.find("lora:") != std::string::npos) {
+        //         loras.push_back(asset.path);
+        //     }
+        // }
 
-        llama::Model::Params modelParams;
-        std::string progressTag = "loading " + gguf;
-        return std::make_shared<LlamaModel>(gguf, loras, ctrlVectors, [movecap(progressTag, progressCb)](float p) {
-            if (progressCb) {
-                progressCb(progressTag, p);
-            }
-        }, astl::move(modelParams));
+        // llama::Model::Params modelParams;
+        // std::string progressTag = "loading " + gguf;
+        // return std::make_shared<LlamaModel>(gguf, loras, ctrlVectors, [movecap(progressTag, progressCb)](float p) {
+        //     if (progressCb) {
+        //         progressCb(progressTag, p);
+        //     }
+        // }, astl::move(modelParams));
+
+        return {};
     }
 
     virtual frameio::SessionHandlerPtr createSessionHandler(std::string_view) override {
