@@ -34,6 +34,7 @@ namespace {
 class ChatSession {
     llama::Session& m_session;
     const llama::Vocab& m_vocab;
+    llama::Instance& m_instance;
     std::string m_userPrefix;
     std::string m_assistantPrefix;
 
@@ -47,6 +48,7 @@ public:
     ChatSession(llama::Instance& instance, Interface::OpChatBegin::Params& params)
         : m_session(instance.startSession({}))
         , m_vocab(instance.model().vocab())
+        , m_instance(instance)
     {
         m_promptTokens = instance.model().vocab().tokenize(params.setup.value(), true, true);
         m_session.setInitialPrompt(m_promptTokens);
@@ -57,6 +59,10 @@ public:
         m_assistantPrefix = "\n";
         m_assistantPrefix += params.roleAssistant;
         m_assistantPrefix += ":";
+    }
+
+    ~ChatSession() {
+        m_instance.stopSession();
     }
 
     void pushPrompt(Interface::OpAddChatPrompt::Params& params) {
@@ -132,17 +138,16 @@ public:
 using Schema = schema::LlamaCppProvider;
 
 llama::Model::Params ModelParams_fromDict(Dict&) {
-    // auto schemaParams = schema::Struct_fromDict<Schema::Params>(std::move(d));
     llama::Model::Params ret;
-    // ret.path = schemaParams. .valueOr("");
-    // ret.splice = astl::move(schemaParams.spliceString.valueOr(""));
     return ret;
 }
 
-static llama::Instance::InitParams InitParams_fromDict(Dict&&) {
-    // auto schemaParams = schema::Struct_fromDict<Schema::InstanceGeneral::Params>(astl::move(d));
+static llama::Instance::InitParams InitParams_fromDict(Dict&& d) {
+    auto schemaParams = schema::Struct_fromDict<Schema::InstanceGeneral::Params>(astl::move(d));
     llama::Instance::InitParams ret;
-    // ret.cutoff = schemaParams.cutoff;
+    ret.batchSize = schemaParams.batchSize;
+    ret.ctxSize = schemaParams.ctxSize;
+    ret.ubatchSize = schemaParams.ubatchSize;
     return ret;
 }
 
@@ -162,6 +167,10 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
         }
 
         Interface::OpRun::Return on(Interface::OpRun, Interface::OpRun::Params&& params) {
+            if (m_chatSession) {
+                throw_ex{} << "llama: chat already started";
+            }
+
             auto& prompt = params.prompt.value();
             const auto maxTokens = params.maxTokens.value();
 
@@ -193,11 +202,18 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
                 result += tokenStr;
             }
 
+            m_instance.stopSession();
+
             return ret;
         }
 
         Interface::OpChatBegin::Return on(Interface::OpChatBegin, Interface::OpChatBegin::Params&& params) {
             m_chatSession.emplace(m_instance, params);
+            return {};
+        }
+
+        Interface::OpChatEnd::Return on(Interface::OpChatEnd, Interface::OpChatEnd::Params&&) {
+            m_chatSession.reset();
             return {};
         }
 
@@ -268,6 +284,7 @@ SessionCoro<void> Llama_runSession() {
     }
     catch (std::exception& e) {
         errorFrame = Frame{"error", e.what()};
+        printf("error: %s\n", e.what());
     }
 
     try {
@@ -278,9 +295,9 @@ SessionCoro<void> Llama_runSession() {
     catch (coro::IoClosed&) {
         co_return;
     }
+
+    co_return;
 }
-
-
 
 
 class LlamaInstance final : public Instance {
@@ -339,6 +356,11 @@ public:
 
     Interface::OpChatBegin::Return on(Interface::OpChatBegin, Interface::OpChatBegin::Params&& params) {
         m_chatSession.emplace(m_instance, params);
+        return {};
+    }
+
+    Interface::OpChatEnd::Return on(Interface::OpChatEnd, Interface::OpChatEnd::Params&&) {
+        m_chatSession.reset();
         return {};
     }
 
