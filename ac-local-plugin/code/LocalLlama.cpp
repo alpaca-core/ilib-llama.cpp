@@ -333,6 +333,9 @@ SessionCoro<void> Llama_runSession() {
 
         static llama::Model::Params ModelParams_fromSchema(sc::StateInitial::OpLoadModel::Params schemaParams) {
             llama::Model::Params ret;
+            ret.gpu = schemaParams.useGpu.valueOr(true);
+            ret.vocabOnly = schemaParams.vocabOnly.valueOr(false);
+            ret.prefixInputsWithBos = schemaParams.prefixInputsWithBos.valueOr(false);
             return ret;
         }
 

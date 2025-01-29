@@ -22,6 +22,21 @@
                 },
                 "description": "Paths to lora adapters.",
                 "default": []
+              },
+              "useGpu": {
+                "type": "integer",
+                "description": "Try to load data on gpu.",
+                "default": true
+              },
+              "vocabOnly": {
+                "type": "integer",
+                "description": "Load only model vocabulary",
+                "default": false
+              },
+              "prefixInputsWithBos": {
+                "type": "integer",
+                "description": "Add bos token to interactive inputs.",
+                "default": false
               }
             }
           },

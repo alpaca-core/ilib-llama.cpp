@@ -23,11 +23,18 @@ struct StateInitial {
         struct Params{
             Field<std::string> ggufPath = std::nullopt;
             Field<std::vector<std::string>> loraPaths = Default();
+            Field<bool> useGpu = Default(true);
+            Field<bool> vocabOnly = Default(false);
+            Field<bool> prefixInputsWithBos = Default(false);
 
             template <typename Visitor>
             void visitFields(Visitor& v) {
                 v(ggufPath, "gguf", "Path to the file with model data.");
                 v(loraPaths, "loras", "Paths to lora adapters.");
+                v(useGpu, "useGpu", "Try to load data on gpu.");
+                v(vocabOnly, "vocabOnly", "Load only model vocabulary");
+                v(prefixInputsWithBos, "prefixInputsWithBos", "Add bos token to interactive inputs.");
+
             }
         };
 
