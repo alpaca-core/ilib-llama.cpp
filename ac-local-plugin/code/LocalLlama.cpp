@@ -115,7 +115,6 @@ public:
             m_session.pushPrompt(m_promptTokens);
         }
 
-
         ac::llama::IncrementalStringFinder finder(m_userPrefix);
 
         m_addUserPrefix = true;
@@ -265,7 +264,16 @@ SessionCoro<void> Llama_runModel(coro::Io io, std::unique_ptr<llama::Model> mode
         }
 
         Schema::OpStartInstance::Return on(Schema::OpStartInstance, Schema::OpStartInstance::Params params) {
+            auto ctrlVectors = params.ctrlVectorPaths.valueOr({});
+            std::vector<llama::ControlVector::LoadInfo> ctrlloadInfo;
+            for (auto& path: ctrlVectors) {
+                ctrlloadInfo.push_back({path, 2});
+            }
+
+            ac::llama::ControlVector ctrl(lmodel, ctrlloadInfo);
             instance = std::make_unique<llama::Instance>(lmodel, InstanceParams_fromSchema(params));
+            instance->addControlVector(ctrl);
+
             return {};
         }
     };
@@ -293,19 +301,26 @@ SessionCoro<void> Llama_runSession() {
 
         std::unique_ptr<llama::Model> model;
 
-        static std::pair<std::string, llama::Model::Params> ModelParams_fromSchema(sc::StateInitial::OpLoadModel::Params schemaParams) {
+        static llama::Model::Params ModelParams_fromSchema(sc::StateInitial::OpLoadModel::Params schemaParams) {
             llama::Model::Params ret;
-            auto gguf = schemaParams.ggufPath.valueOr("");
-            return {gguf, ret};
+            return ret;
         }
 
         Schema::OpLoadModel::Return on(Schema::OpLoadModel, Schema::OpLoadModel::Params params) {
-            auto [gguf, lparams] = ModelParams_fromSchema(params);
+            auto gguf = params.ggufPath.valueOr("");
+            auto loras = params.loraPaths.valueOr({});
+            auto lparams = ModelParams_fromSchema(params);
 
             model = std::make_unique<llama::Model>(
                 llama::ModelRegistry::getInstance().loadModel(gguf.c_str(), {}, lparams),
                 astl::move(lparams)
             );
+
+            for(auto& loraPath: loras) {
+                auto lora = llama::ModelRegistry::getInstance().loadLora(model.get(), loraPath);
+                model->addLora(lora);
+            }
+
             return {};
         }
     };
@@ -345,28 +360,7 @@ public:
     }
 
     virtual ModelPtr loadModel(ModelAssetDesc , Dict, ProgressCb ) override {
-        // auto& gguf = desc.assets.front().path;
-
-        // std::vector<llama::ControlVector::LoadInfo> ctrlVectors;
-        // std::vector<std::string> loras;
-        // for (auto& asset : desc.assets) {
-        //     if (asset.tag.find("control_vector:")) {
-        //         ctrlVectors.push_back({asset.path, 2});
-        //     }
-        //     if (asset.tag.find("lora:") != std::string::npos) {
-        //         loras.push_back(asset.path);
-        //     }
-        // }
-
-        // llama::Model::Params modelParams;
-        // std::string progressTag = "loading " + gguf;
-        // return std::make_shared<LlamaModel>(gguf, loras, ctrlVectors, [movecap(progressTag, progressCb)](float p) {
-        //     if (progressCb) {
-        //         progressCb(progressTag, p);
-        //     }
-        // }, astl::move(modelParams));
-
-        return {};
+         return {};
     }
 
     virtual frameio::SessionHandlerPtr createSessionHandler(std::string_view) override {

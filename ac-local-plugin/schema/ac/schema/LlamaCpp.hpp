@@ -22,10 +22,12 @@ struct StateInitial {
 
         struct Params{
             Field<std::string> ggufPath = std::nullopt;
+            Field<std::vector<std::string>> loraPaths = Default();
 
             template <typename Visitor>
             void visitFields(Visitor& v) {
-                v(ggufPath, "gguf", "Optional path to the file with model data.");
+                v(ggufPath, "gguf", "Path to the file with model data.");
+                v(loraPaths, "loras", "Paths to lora adapters.");
             }
         };
 
@@ -48,6 +50,7 @@ struct StateModelLoaded {
 
         struct Params {
             Field<std::string> instanceType = Default("general");
+            Field<std::vector<std::string>> ctrlVectorPaths = Default();
             Field<uint32_t> ctxSize = Default(0);
             Field<uint32_t> batchSize = Default(2048);
             Field<uint32_t> ubatchSize = Default(512);
@@ -55,6 +58,7 @@ struct StateModelLoaded {
             template <typename Visitor>
             void visitFields(Visitor& v) {
                 v(instanceType, "instance_type", "Type of the instance to start");
+                v(ctrlVectorPaths, "ctrl-vectors", "Paths to the control vectors.");
                 v(ctxSize, "ctx_size", "Size of the context");
                 v(batchSize, "batch_size", "Size of the single batch");
                 v(ubatchSize, "ubatch_size", "Size of the context");
