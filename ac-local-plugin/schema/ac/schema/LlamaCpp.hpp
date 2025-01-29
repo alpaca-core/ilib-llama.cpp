@@ -104,7 +104,6 @@ struct StateInstance {
         };
     };
 
-
     struct OpChatBegin {
         static inline constexpr std::string_view id = "begin-chat";
         static inline constexpr std::string_view desc = "Begin a chat session";
@@ -124,6 +123,15 @@ struct StateInstance {
 
         using Return = nullptr_t;
     };
+
+    using Ops = std::tuple<OpRun, OpChatBegin>;
+    using Ins = std::tuple<>;
+    using Outs = std::tuple<>;
+};
+
+struct StateChat {
+    static constexpr auto id = "chat";
+    static constexpr auto desc = "Chat state";
 
     struct OpChatEnd {
         static inline constexpr std::string_view id = "end-chat";
@@ -165,7 +173,7 @@ struct StateInstance {
         };
     };
 
-    using Ops = std::tuple<OpRun, OpChatBegin, OpChatEnd, OpAddChatPrompt, OpGetChatResponse>;
+    using Ops = std::tuple<OpChatEnd, OpAddChatPrompt, OpGetChatResponse>;
     using Ins = std::tuple<>;
     using Outs = std::tuple<>;
 };
@@ -174,7 +182,7 @@ struct Interface {
     static inline constexpr std::string_view id = "llama.cpp";
     static inline constexpr std::string_view desc = "Inference based on our fork of https://github.com/ggerganov/llama.cpp";
 
-    using States = std::tuple<StateInitial, StateModelLoaded, StateInstance>;
+    using States = std::tuple<StateInitial, StateModelLoaded, StateInstance, StateChat>;
 };
 
 } // namespace llama
