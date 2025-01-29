@@ -149,7 +149,15 @@
           "return": {
             "type": "null"
           }
-        },
+        }
+      },
+      "ins": null,
+      "outs": null
+    },
+    {
+      "id": "chat",
+      "description": "Chat state",
+      "ops": {
         "end-chat": {
           "description": "End a chat session",
           "params": {

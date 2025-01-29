@@ -64,9 +64,9 @@ class ChatSession {
     bool m_addUserPrefix = true;
     bool m_addAssistantPrefix = true;
 public:
-    using Schema = sc::StateInstance;
+    using Schema = sc::StateChat;
 
-    ChatSession(llama::Instance& instance, Schema::OpChatBegin::Params& params)
+    ChatSession(llama::Instance& instance, sc::StateInstance::OpChatBegin::Params& params)
         : m_session(instance.startSession({}))
         , m_vocab(instance.model().vocab())
         , m_instance(instance)
@@ -121,7 +121,6 @@ public:
         Schema::OpGetChatResponse::Return ret;
         auto& response = ret.response.materialize();
 
-
         for (int i = 0; i < 1000; ++i) {
             auto t = m_session.getToken();
             if (t == ac::llama::Token_Invalid) {
@@ -154,6 +153,51 @@ public:
         return ret;
     }
 };
+
+SessionCoro<void> Llama_beginChat(coro::Io io, ChatSession& chat) {
+    using Schema = sc::StateChat;
+
+    struct Runner : public BasicRunner {
+        ChatSession& chatSession;
+
+        enum class State {
+            Running,
+            End
+        } state = State::Running;
+
+        Runner(ChatSession& chat)
+            : chatSession(chat)
+        {
+            schema::registerHandlers<Schema::Ops>(m_dispatcherData, *this);
+        }
+
+        Schema::OpChatEnd::Return on(Schema::OpChatEnd, Schema::OpChatEnd::Params&&) {
+            state = State::End;
+            return {};
+        }
+
+        Schema::OpAddChatPrompt::Return on(Schema::OpAddChatPrompt, Schema::OpAddChatPrompt::Params&& params) {
+            chatSession.pushPrompt(params);
+            return {};
+        }
+
+        Schema::OpGetChatResponse::Return on(Schema::OpGetChatResponse, Schema::OpGetChatResponse::Params&&) {
+            return chatSession.getResponse();
+        }
+    };
+
+        co_await io.pushFrame(Frame_stateChange(Schema::id));
+
+    Runner runner(chat);
+    while (true)
+    {
+        auto f = co_await io.pollFrame();
+        co_await io.pushFrame(runner.dispatch(f.frame));
+        if (runner.state == Runner::State::End) {
+            co_return;
+        }
+    }
+}
 
 SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance> instance) {
     using Schema = sc::StateInstance;
@@ -213,26 +257,6 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
             m_chatSession.emplace(m_instance, params);
             return {};
         }
-
-        Schema::OpChatEnd::Return on(Schema::OpChatEnd, Schema::OpChatEnd::Params&&) {
-            m_chatSession.reset();
-            return {};
-        }
-
-        Schema::OpAddChatPrompt::Return on(Schema::OpAddChatPrompt, Schema::OpAddChatPrompt::Params&& params) {
-            if (!m_chatSession) {
-                throw_ex{} << "llama: chat not started";
-            }
-            m_chatSession->pushPrompt(params);
-            return {};
-        }
-
-        Schema::OpGetChatResponse::Return on(Schema::OpGetChatResponse, Schema::OpGetChatResponse::Params&&) {
-            if (!m_chatSession) {
-                throw_ex{} << "llama: chat not started";
-            }
-            return m_chatSession->getResponse();
-        }
     };
 
     co_await io.pushFrame(Frame_stateChange(Schema::id));
@@ -242,6 +266,12 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
     {
         auto f = co_await io.pollFrame();
         co_await io.pushFrame(runner.dispatch(f.frame));
+        if (runner.m_chatSession) {
+            co_await Llama_beginChat(io, runner.m_chatSession.value());
+            runner.m_chatSession.reset();
+
+            co_await io.pushFrame(Frame_stateChange(Schema::id));
+        }
     }
 }
 
@@ -345,6 +375,7 @@ SessionCoro<void> Llama_runSession() {
         co_return;
     }
 }
+
 class LlamaProvider final : public Provider {
 public:
     virtual const Info& info() const noexcept override {

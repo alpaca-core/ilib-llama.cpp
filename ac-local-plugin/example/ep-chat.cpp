@@ -30,21 +30,34 @@ int main() try {
     ac::schema::BlockingIoHelper llama(io.connectBlocking(ac::local::Lib::createSessionHandler("llama.cpp")));
 
     llama.expectState<schema::StateInitial>();
+
     llama.call<schema::StateInitial::OpLoadModel>({
         .ggufPath = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
     });
-
     llama.expectState<schema::StateModelLoaded>();
+
     llama.call<schema::StateModelLoaded::OpStartInstance>({
         .instanceType = "general"
     });
-
     llama.expectState<schema::StateInstance>();
+
     llama.call<schema::StateInstance::OpChatBegin>({
         .setup = "A chat between a human user and a helpful AI assistant.",
         .roleUser = "user",
         .roleAssistant = "assistant"
     });
+    llama.expectState<schema::StateChat>();
+
+    // Change state back from chat to instance
+    llama.call<schema::StateChat::OpChatEnd>({});
+    llama.expectState<schema::StateInstance>();
+
+    llama.call<schema::StateInstance::OpChatBegin>({
+        .setup = "A chat between a human user and a helpful AI assistant.",
+        .roleUser = "user",
+        .roleAssistant = "assistant"
+    });
+    llama.expectState<schema::StateChat>();
 
     while (true) {
         std::cout << "User: ";
@@ -52,11 +65,11 @@ int main() try {
         std::getline(std::cin, user);
         if (user == "/quit") break;
         user = ' ' + user;
-        llama.call<schema::StateInstance::OpAddChatPrompt>({
+        llama.call<schema::StateChat::OpAddChatPrompt>({
             .prompt = user
         });
 
-        auto res = llama.call<schema::StateInstance::OpGetChatResponse>({});
+        auto res = llama.call<schema::StateChat::OpGetChatResponse>({});
         std::cout << "AI: " << res.response.value() << '\n';
     }
 
