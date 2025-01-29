@@ -389,14 +389,6 @@ public:
         return i;
     }
 
-    virtual bool canLoadModel(const ModelAssetDesc& desc, const Dict&) const noexcept override {
-        return desc.type == "llama.cpp gguf";
-    }
-
-    virtual ModelPtr loadModel(ModelAssetDesc , Dict, ProgressCb ) override {
-         return {};
-    }
-
     virtual frameio::SessionHandlerPtr createSessionHandler(std::string_view) override {
         return CoroSessionHandler::create(Llama_runSession());
     }
