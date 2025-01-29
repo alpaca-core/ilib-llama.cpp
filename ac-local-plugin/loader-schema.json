@@ -13,7 +13,15 @@
             "properties": {
               "gguf": {
                 "type": "string",
-                "description": "Optional path to the file with model data."
+                "description": "Path to the file with model data."
+              },
+              "loras": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Paths to lora adapters.",
+                "default": []
               }
             }
           },
@@ -38,6 +46,14 @@
                 "type": "string",
                 "description": "Type of the instance to start",
                 "default": "general"
+              },
+              "ctrl-vectors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Paths to the control vectors.",
+                "default": []
               },
               "ctx_size": {
                 "type": "integer",
