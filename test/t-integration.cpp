@@ -321,3 +321,92 @@ TEST_CASE("control_vector") {
         }
     }
 }
+
+TEST_CASE("grammar") {
+    ac::llama::Model::Params iParams = {};
+    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(Model_117m_q6_k, {}, iParams);
+    ac::llama::Model model(lmodel, iParams);
+    CHECK(!!model.lmodel());
+
+    auto& params = model.params();
+    CHECK(params.gpu);
+    CHECK_FALSE(params.vocabOnly);
+
+    CHECK(model.trainCtxLength() == 1024);
+    CHECK_FALSE(model.shouldAddBosToken());
+    CHECK_FALSE(model.hasEncoder());
+
+    SUBCASE("Numbers 6-9 only") {
+        ac::llama::Instance::InitParams iparams;
+        iparams.grammar =  R""""(
+root        ::= en-char+ ([ \t\n] en-char+)*
+en-char     ::= digit | letter
+letter      ::= [a-zA-Z]
+digit       ::= [6-9]
+            )"""";
+
+        ac::llama::Instance inst(model, iparams);
+        inst.warmup(); // should be safe
+
+        auto& s = inst.startSession({});
+        std::vector<ac::llama::Token> tokens = model.vocab().tokenize("My name is Daniel and my age is", true, true);
+        s.setInitialPrompt(tokens);
+        std::string text;
+        for (int i = 0; i < 5; ++i) {
+            auto t = s.getToken();
+            REQUIRE(t != ac::llama::Token_Invalid);
+            text += model.vocab().tokenToString(t);
+        }
+
+        CHECK(text == "s about 9 years old");
+    }
+
+    SUBCASE("Numbers 1-5 only") {
+        ac::llama::Instance::InitParams iparams;
+        iparams.grammar =  R""""(
+root        ::= en-char+ ([ \t\n] en-char+)*
+en-char     ::= digit | letter
+letter      ::= [a-zA-Z]
+digit       ::= [1-5]
+            )"""";
+
+        ac::llama::Instance inst(model, iparams);
+        inst.warmup(); // should be safe
+
+        auto& s = inst.startSession({});
+        std::vector<ac::llama::Token> tokens = model.vocab().tokenize("My name is Daniel and my age is", true, true);
+        s.setInitialPrompt(tokens);
+        std::string text;
+        for (int i = 0; i < 5; ++i) {
+            auto t = s.getToken();
+            REQUIRE(t != ac::llama::Token_Invalid);
+            text += model.vocab().tokenToString(t);
+        }
+
+        CHECK(text == "54 and I am an");
+    }
+
+    SUBCASE("All capital letters") {
+        ac::llama::Instance::InitParams iparams;
+        iparams.grammar =  R""""(
+root        ::= en-char+ ([ \t\n] en-char+)*
+en-char     ::= letter
+letter      ::= [A-Z]
+            )"""";
+
+        ac::llama::Instance inst(model, iparams);
+        inst.warmup(); // should be safe
+
+        auto& s = inst.startSession({});
+        std::vector<ac::llama::Token> tokens = model.vocab().tokenize("My name is Daniel and my age is", true, true);
+        s.setInitialPrompt(tokens);
+        std::string text;
+        for (int i = 0; i < 5; ++i) {
+            auto t = s.getToken();
+            REQUIRE(t != ac::llama::Token_Invalid);
+            text += model.vocab().tokenToString(t);
+        }
+
+        CHECK(text == "ELLIE JONES");
+    }
+}
