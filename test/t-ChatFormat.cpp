@@ -295,7 +295,7 @@ TEST_CASE("formatMsg - system") {
     CHECK(test("llama3") == "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant<|eot_id|>");
 }
 
-TEST_CASE("formatMsg - chat") {
+TEST_CASE("formatMsg - chat llama") {
     SUBCASE("empty chat") {
         ac::llama::ChatMsg msg = {"user", "How are you"};
 
@@ -334,10 +334,10 @@ TEST_CASE("formatMsg - chat") {
 
 TEST_CASE("invalid") {
     std::string badTpl = "bad template";
-    // CHECK_THROWS_WITH_AS(ac::llama::ChatFormat{badTpl}, "Unsupported template: bad template", std::runtime_error);
+    CHECK_THROWS_WITH_AS(ac::llama::ChatFormat{badTpl}, "Unsupported llama template: bad template", std::runtime_error);
 }
 
-TEST_CASE("custom template") {
+TEST_CASE("formatChat - invalid") {
     std::string template_text = R"(** System **: {{ system}}
 
 **Task**: {{ task }}
@@ -357,9 +357,56 @@ Provide your response below:)";
         {"assistant", "I am assistant"}
     };
 
-    ac::llama::ChatFormat fmt{template_text};
-    auto res = fmt.formatChat(chat, true);
-    std::string expected_str = "** System **: You are a helpful assistant\n\n**Task**: Answer questions\n\n**Input**: Hello\n\n\n** Assistant **: I am assistant\n\n\nProvide your response below:";
+    std::vector<std::string> roles = {"system", "user", "task"};
+    CHECK_THROWS_WITH_AS(ac::llama::ChatFormat(template_text, roles), "Unsupported template. Couldn't handle role: system", std::runtime_error);
+
+}
+
+TEST_CASE("custom template2") {
+    std::string template_text = R"(
+{% for message in messages %}
+{% if message['role'] == 'system' %}
+### Instruction:
+{{ message['content']|trim -}}
+{% if not loop.last %}
+
+{% endif %}
+{% elif message['role'] == 'user' %}
+### Response:
+{{ message['content']|trim -}}
+{% if not loop.last %}
+
+{% endif %}
+{% elif message['role'] == 'task' %}
+### Input:
+{{ message['content']|trim -}}
+{% if not loop.last %}
+
+{% endif %}
+{% endif %}
+{% endfor %}
+)";
+
+    const std::vector<ac::llama::ChatMsg> chat = {
+        {"system", "You are a helpful assistant"},
+        {"user", "Hello"},
+        {"task", "Answer questions"},
+    };
+
+    std::vector<std::string> roles = {"system", "user", "task"};
+    ac::llama::ChatFormat fmt{template_text, roles};
+    auto res = fmt.formatChat(chat);
+
+    std::string expected_str = "\n\n\n### Instruction:\nYou are a helpful assistant\n\n\n\n\n\n### Response:\nHello\n\n\n\n\n\n### Input:\nAnswer questions\n\n\n";
+    CHECK(res.size() == expected_str.size());
+    for (size_t i = 0; i < res.size(); i++)
+    {
+        if (res[i] != expected_str[i])
+        {
+            std::cout << "pos: " << i << " res: " << res[i] << " expected: " << expected_str[i] << std::endl;
+        }
+    }
+
 
     CHECK(res == expected_str);
 }
