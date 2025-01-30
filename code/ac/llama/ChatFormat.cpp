@@ -79,9 +79,45 @@ ChatFormat::ChatFormat(std::string tpl)
     , m_templateId(llm_chat_detect_template(m_template))
 {
     if (m_templateId == LLM_CHAT_TEMPLATE_UNKNOWN) {
-        auto parse_result = m_jTemplate.Load(m_template);
-        if (!parse_result) {
-            throw_ex{} << "Unsupported template: " << m_template;
+        throw_ex{} << "Unsupported llama template: " << m_template;
+    }
+}
+
+ChatFormat::ChatFormat(std::string tpl, std::span<std::string> roles)
+    : m_template(astl::move(tpl))
+    , m_templateId(LLM_CHAT_TEMPLATE_UNKNOWN)
+{
+    auto parse_result = m_jTemplate.Load(m_template);
+    if (!parse_result) {
+        throw_ex{} << "Unsupported custom template: " << m_template;
+    }
+
+    std::vector<std::string> rolesMessages(roles.size());
+    for (size_t i = 0; i < roles.size(); i++) {
+        rolesMessages[i] = "Message " + std::to_string(i);
+    }
+
+    jinja2::ValuesList messagesArr;
+    for (size_t i = 0; i < roles.size(); i++) {
+        jinja2::ValuesMap message;
+        message["role"] = roles[i];
+        message["content"] = rolesMessages[i];
+
+        messagesArr.push_back(message);
+    };
+
+    jinja2::ValuesMap context;
+    context["messages"] = messagesArr;
+
+    auto result = m_jTemplate.RenderAsString(context);
+    if (!result) {
+        throw_ex{} << "Missing iteration clause for 'messages'" << m_template;
+    }
+
+    for (size_t i = 0; i < rolesMessages.size(); i++)
+    {
+        if (result.value().find(rolesMessages[i]) == std::string::npos) {
+            throw_ex{} << "Unsupported template. Couldn't handle role: " << roles[i];
         }
     }
 }
@@ -101,18 +137,36 @@ const char* ChatFormat::templateId() const noexcept {
 }
 
 std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) {
-    if (m_templateId != LLM_CHAT_TEMPLATE_UNKNOWN) {
-        auto [lchat, size] = fromChatMsg(chat);
-        return apply(lchat, size, addAssistantPrompt);
-    }
+    assert(m_templateId != LLM_CHAT_TEMPLATE_UNKNOWN);
 
+    auto [lchat, size] = fromChatMsg(chat);
+    return apply(lchat, size, addAssistantPrompt);
+}
+
+std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, jinja2::ValuesMap params) {
+    assert(m_templateId == LLM_CHAT_TEMPLATE_UNKNOWN);
     jinja2::ValuesMap data;
     for (auto& msg : chat) {
         data[msg.role] = msg.text;
     }
 
-    auto render_result = m_jTemplate.RenderAsString(data);
-    return render_result.value();
+    jinja2::ValuesList messages;
+    for (size_t i = 0; i < chat.size(); i++) {
+        jinja2::ValuesMap message;
+        message["role"] = chat[i].role;
+        message["content"] = chat[i].text;
+
+        messages.push_back(message);
+    };
+
+    jinja2::ValuesMap context;
+    context["messages"] = messages;
+    for (auto& [key, value] : params) {
+        context[key] = value;
+    }
+
+    auto res = m_jTemplate.RenderAsString(context);
+    return res.value();
 }
 
 std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) {
