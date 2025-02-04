@@ -126,6 +126,28 @@ Token Session::getToken() {
     return m_state.m_currToken;
 }
 
+std::vector<float> Session::getLogits(int32_t topK, float topP) {
+    if (m_state.m_phase != State::Phase::Generating) {
+        throw_ex{} << "Session hasn't started yet";
+    }
+
+    flushPendingState();
+
+    Sampler::Params sParams = {
+        // .topP = topP,
+        .topK = topK,
+        .samplerSequence = {
+            Sampler::SamplingType::Top_K,
+            Sampler::SamplingType::Top_P,
+        }
+    };
+    Sampler sampler(const_cast<Model&>(m_instance.model()), sParams);
+
+    auto logits = sampler.extractLogits(m_ctx);
+
+    return logits;
+}
+
 std::vector<uint8_t> Session::getState() {
     if (m_state.m_phase != State::Phase::Generating) {
         throw_ex{} << "Session hasn't started yet";
