@@ -37,6 +37,7 @@ public:
     // main functions to interact with the model
     void pushPrompt(std::span<const Token> prompt);
     Token getToken();
+    std::vector<float> getLogits(int32_t topK, float topP = 0.95f);
     std::vector<uint8_t> getState();
 private:
     enum class Source {
