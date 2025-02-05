@@ -9,9 +9,25 @@
 
 namespace ac::llama {
 namespace {
-llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadProgressCb& loadProgressCb)
-{
+llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadProgressCb& loadProgressCb) {
+    static ggml_backend_dev_t devicesCpu[] = {
+        ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU),
+         nullptr
+    };
+
+    static ggml_backend_dev_t devicesGpu[] = {
+        ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_GPU),
+         nullptr
+    };
+
     llama_model_params llamaParams = llama_model_default_params();
+
+    if (params.gpu) {
+        llamaParams.devices = devicesGpu;
+    } else {
+        llamaParams.devices = devicesCpu;
+    }
+
     if (params.gpu) {
         llamaParams.n_gpu_layers = 10000;
     }
@@ -89,6 +105,9 @@ std::shared_ptr<llama_model> ModelRegistry::loadModel(
 
     if (!model) {
         model = std::shared_ptr<llama_model>(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free);
+        if (model == nullptr) {
+            throw std::runtime_error("Failed to load model");
+        }
         m_models.push_back({key, model});
     }
 

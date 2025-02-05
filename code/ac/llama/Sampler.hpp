@@ -101,7 +101,7 @@ public:
     // idx is optional for sampling from the logits of the ith token
     Token sample(llama_context* lctx, int idx = -1, bool grammarFirst = false);
 
-    std::vector<float> extractLogits(llama_context* lctx);
+    std::vector<std::pair<Token, float>> extractProbs(llama_context* lctx);
 
     // accept token as sampled
     // if acceptGrammar is true, the token is accepted both by the sampling chain and the grammar
