@@ -126,7 +126,7 @@ Token Session::getToken() {
     return m_state.m_currToken;
 }
 
-std::vector<float> Session::getLogits(int32_t topK, float topP) {
+std::vector<std::pair<Token, float>> Session::getProbs(int32_t topK, float topP) {
     if (m_state.m_phase != State::Phase::Generating) {
         throw_ex{} << "Session hasn't started yet";
     }
@@ -134,7 +134,7 @@ std::vector<float> Session::getLogits(int32_t topK, float topP) {
     flushPendingState();
 
     Sampler::Params sParams = {
-        // .topP = topP,
+        .topP = topP,
         .topK = topK,
         .samplerSequence = {
             Sampler::SamplingType::Top_K,
@@ -143,7 +143,7 @@ std::vector<float> Session::getLogits(int32_t topK, float topP) {
     };
     Sampler sampler(const_cast<Model&>(m_instance.model()), sParams);
 
-    auto logits = sampler.extractLogits(m_ctx);
+    auto logits = sampler.extractProbs(m_ctx);
 
     return logits;
 }

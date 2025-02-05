@@ -30,104 +30,103 @@ int main() try {
     ac::llama::initLibrary();
 
     // load model
-    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/../../.." "/Thoth-Llama3.2-3B-IQ4_NL.gguf";
-    std::string modelGguf2 = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
-    // std::string modelGguf2 = AC_TEST_DATA_LLAMA_DIR "/../../.." "/DeepSeek-R1-Distill-Qwen-7B-IQ4_XS.gguf";
-
-    ac::llama::Model::Params modelParams;
-    auto modelLoadProgressCallback = [](float progress) {
-        const int barWidth = 50;
-        static float currProgress = 0;
-        auto delta = int(progress * barWidth) - int(currProgress * barWidth);
-        for (int i = 0; i < delta; i++) {
-            std::cout.put('=');
-        }
-        currProgress = progress;
-        if (progress == 1.f) {
-            std::cout << '\n';
-        }
-        return true;
+    std::vector<std::string> modelGgufs = {
+        AC_TEST_DATA_LLAMA_DIR "/../../.." "/Thoth-Llama3.2-3B-IQ4_NL.gguf",
+        AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
     };
-    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(modelGguf, modelLoadProgressCallback, modelParams);
-    auto lmodel2 = ac::llama::ModelRegistry::getInstance().loadModel(modelGguf2, modelLoadProgressCallback, modelParams);
-    ac::llama::Model model(lmodel, modelParams);
-    ac::llama::Model modelDeep(lmodel2, modelParams);
-
-
-    // create inference instance
-    ac::llama::Instance instance(model, {});
-    ac::llama::Instance instanceDeep(modelDeep, {});
-
-    // To add control vector uncomment the following lines
-    // ac::llama::ControlVector ctrlVector(model, {{ctrlVectorGguf, 2.f}});
-    // instance.addControlVector(ctrlVector);
-
-    std::string prompt = "In the 23th century the world was ";
-
-    // start session
-    auto& session = instance.startSession({});
-    session.setInitialPrompt(model.vocab().tokenize(prompt, true, true));
-    auto a = session.getLogits(10);
-
-    // 117m
-    auto& sessionDeep = instanceDeep.startSession({});
-    sessionDeep.setInitialPrompt(modelDeep.vocab().tokenize(prompt, true, true));
-    auto b = sessionDeep.getLogits(10);
-
-    std::string files[] = {
-        "Thoth-Llama3.2-3B-IQ4_NL-logits.bin",
-        "gpt2-117m-q6_k-logits.bin",
+    std::vector<std::string> names = {
+        "llam3.2-3b-iq4_nl",
+        "gpt2-117m-q6_k"
     };
 
-    std::vector<float> logits[] = {a, b};
+    // std::string prompt = "President George W.";
+    std::string prompt = "In the 23th centuty";
 
-    // for (size_t i = 0; i < 2; i++) {
-    //     std::ofstream f(files[i], std::ios::binary);
-    //     size_t size = logits[i].size();
-    //     f.write(reinterpret_cast<const char*>(&size), sizeof(size_t));
-    //     f.write(reinterpret_cast<const char*>(logits[i].data()), logits[i].size() * sizeof(float));
-    //     f.close();
-    // }
+    using ProbVector = std::vector<std::pair<ac::llama::Token, float>>;
+    std::pair<ProbVector, ProbVector> results[modelGgufs.size()];
 
-    std::vector<float> gpuData[2];
-
-    for (size_t i = 0; i < 2; i++) {
-        std::ifstream f(files[i], std::ios::binary);
-
-        size_t size = 0;
-        f.read((char*)&size, sizeof(size_t));
-
-        gpuData[i].resize(size);
-        f.read((char*)gpuData[i].data(), size * sizeof(float));
-
-        f.close();
-
-        for (size_t j = 0; j < gpuData[i].size(); j++) {
-            if (std::abs(logits[i][j] - gpuData[i][j]) > 0.00001) {
-                std::cerr << "[" << i << "] Logits mismatch at index " << j << ". "<< logits[i][j] << " vs " << gpuData[i][j] <<std::endl;
-            }
-        }
-
-    }
-
-
-
-
-    // if (a.size() != b.size()) {
-    //     std::cerr << "Logits size mismatch" << std::endl;
-    //     return 1;
-    // }
-
-    for (size_t i = 0; i < a.size(); i++)
+    for (size_t i = 0; i < modelGgufs.size(); i++)
     {
-        std::cout << a[i] << " " << b[i] << std::endl;
-    }
+        ac::llama::Model::Params modelParams = {
+            .gpu = true,
+        };
 
-    for (size_t i = 0; i < a.size(); i++) {
-        if (std::abs(a[i] - b[i]) > 0.00001) {
-            std::cerr << "Logits mismatch at index " << i << std::endl;
-            return 1;
+        // ac::llama::Model::Params modelParamsCpu = {
+        //     .gpu = false,
+        // };
+
+        auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(modelGgufs[i], nullptr, modelParams);
+        ac::llama::Model model(lmodel, modelParams);
+        ac::llama::Instance instance(model, {});
+
+        // auto lmodelCpu = ac::llama::ModelRegistry::getInstance().loadModel(modelGgufs[i], cb, modelParamsCpu);
+        // ac::llama::Model modelCpu(lmodel, modelParamsCpu);
+        // ac::llama::Instance instanceCpu(modelCpu, {});
+
+        // start session
+        auto& session = instance.startSession({});
+        session.setInitialPrompt(model.vocab().tokenize(prompt, true, true));
+        auto a = session.getProbs(10);
+
+        // 117m
+        // auto& sessionCpu = instanceCpu.startSession({});
+        // sessionCpu.setInitialPrompt(modelCpu.vocab().tokenize(prompt, true, true));
+        // auto b = sessionCpu.getProbs(10);
+
+        // if (a.size() != b.size()) {
+        //     std::cerr << "Logits size mismatch for " << modelGgufs[i] << std::endl;
+        //     continue;
+        // }
+
+        results[i].first = a;
+        // results[i].second = b;
+    };
+
+    std::cout << "Prompt: " << prompt << std::endl;
+    for (size_t i = 0; i < modelGgufs.size(); i++) {
+        std::cerr << "Model: " << modelGgufs[i] << std::endl;
+        auto& a = results[i].first;
+
+#if 0 // GPU
+        {
+            std::ofstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
+            size_t s = a.size();
+            out.write((char*)&s, sizeof(s));
+            out.write((char*)a.data(), a.size() * sizeof(a[0]));
+            out.close();
         }
+#else
+        ProbVector b;
+        {
+            std::ifstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
+            size_t s;
+            out.read((char*)&s, sizeof(s));
+            b.resize(s);
+            out.read((char*)b.data(), b.size() * sizeof(b[0]));
+            out.close();
+        }
+
+        std::cout << "\t\t\tCPU vs GPU" << std::endl;
+
+        {
+            float errSum = 0.0;
+            for (size_t j = 0; j < a.size(); j++) {
+                auto err = std::pow(a[j].second - b[j].second, 2.0);
+                errSum += err;
+            }
+
+            float sqErr = std::sqrt(errSum);
+            std::cout << names[i] << " err: " << errSum << ", sqErr: " << sqErr << std::endl;
+        }
+
+        for (size_t j = 0; j < a.size(); j++) {
+            auto err = std::abs(a[j].second - b[j].second);
+            std::cout << "[" << i << "]" << (err < 0.001 ? " OK" : " MISMATCH") << " (err < 0.001)."
+                        <<" t: [" << a[j].first  << "] vs [" << b[j].first << "],"
+                        <<" p: [" << a[j].second << "] vs [" << b[j].second << "]"
+                        << std::endl;
+        }
+#endif
     }
 
     return 0;
