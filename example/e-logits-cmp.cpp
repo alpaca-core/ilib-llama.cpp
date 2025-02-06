@@ -39,13 +39,13 @@ int main() try {
         "gpt2-117m-q6_k"
     };
 
-    // std::string prompt = "President George W.";
-    std::string prompt = "In the 23th centuty";
+    //std::string prompt = "In the 23th centuty";
+    std::string prompt = "President George W.";
 
     using ProbVector = std::vector<std::pair<ac::llama::Token, float>>;
-    std::pair<ProbVector, ProbVector> results[modelGgufs.size()];
-
-    for (size_t i = 0; i < modelGgufs.size(); i++)
+    constexpr int modelsCount = 2;
+    std::pair<ProbVector, ProbVector> results[modelsCount];
+    for (size_t i = 0; i < modelsCount; i++)
     {
         ac::llama::Model::Params modelParams = {
             .gpu = true,
@@ -83,13 +83,13 @@ int main() try {
     };
 
     std::cout << "Prompt: " << prompt << std::endl;
-    for (size_t i = 0; i < modelGgufs.size(); i++) {
+    for (size_t i = 0; i < modelsCount; i++) {
         std::cerr << "Model: " << modelGgufs[i] << std::endl;
         auto& a = results[i].first;
-
+        std::string rPath = "D:/Repos/ac/ilib-llama.cpp/";
 #if 0 // GPU
         {
-            std::ofstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
+            std::ofstream out(rPath + names[i] + "-gpu2"+ ".logits", std::ios::binary);
             size_t s = a.size();
             out.write((char*)&s, sizeof(s));
             out.write((char*)a.data(), a.size() * sizeof(a[0]));
@@ -98,7 +98,7 @@ int main() try {
 #else
         ProbVector b;
         {
-            std::ifstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
+            std::ifstream out(rPath + names[i] + "-gpu2"+ ".logits", std::ios::binary);
             size_t s;
             out.read((char*)&s, sizeof(s));
             b.resize(s);
@@ -108,9 +108,17 @@ int main() try {
 
         std::cout << "\t\t\tCPU vs GPU" << std::endl;
 
+        if (a.size() != b.size()) {
+            std::cerr << "Logits size mismatch for " << modelGgufs[i] << " A: " << a.size() << " B: " << b.size() << std::endl;
+            //continue;
+        }
+
+        const int commonSize = std::min(a.size(), b.size());
+
         {
             float errSum = 0.0;
-            for (size_t j = 0; j < a.size(); j++) {
+
+            for (size_t j = 0; j < commonSize; j++) {
                 auto err = std::pow(a[j].second - b[j].second, 2.0);
                 errSum += err;
             }
@@ -119,9 +127,10 @@ int main() try {
             std::cout << names[i] << " err: " << errSum << ", sqErr: " << sqErr << std::endl;
         }
 
-        for (size_t j = 0; j < a.size(); j++) {
+        for (size_t j = 0; j < commonSize; j++) {
+            auto sameToken = a[j].first == b[j].first;
             auto err = std::abs(a[j].second - b[j].second);
-            std::cout << "[" << i << "]" << (err < 0.001 ? " OK" : " MISMATCH") << " (err < 0.001)."
+            std::cout << "[" << i << "]" << (err < 0.001 && sameToken ? " OK" : " MISMATCH") << " (err < 0.001)."
                         <<" t: [" << a[j].first  << "] vs [" << b[j].first << "],"
                         <<" p: [" << a[j].second << "] vs [" << b[j].second << "]"
                         << std::endl;
