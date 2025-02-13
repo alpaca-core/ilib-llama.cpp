@@ -88,7 +88,7 @@ std::shared_ptr<llama_model> ModelRegistry::loadModel(
     }
 
     if (!model) {
-        model = std::shared_ptr<llama_model>(llama_load_model_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_free_model);
+        model = std::shared_ptr<llama_model>(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free);
         m_models.push_back({key, model});
     }
 
