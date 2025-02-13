@@ -43,9 +43,6 @@ struct BasicRunner {
             }
             return {f.op, *ret};
         }
-        catch (coro::IoClosed&) {
-            throw;
-        }
         catch (std::exception& e) {
             return {"error", e.what()};
         }
@@ -376,7 +373,8 @@ SessionCoro<void> Llama_runSession() {
             }
         }
     }
-    catch (coro::IoClosed&) {
+    catch (std::exception& e) {
+        throw_ex{} << "Error: " << e.what();
         co_return;
     }
 }
