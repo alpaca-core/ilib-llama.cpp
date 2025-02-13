@@ -44,6 +44,7 @@ public:
     Sampler& sampler() noexcept { return *m_sampler; }
 
     // Change sampler settings by resetting it
+    // warning: this will clear any previous sampler state
     void resetSampler(const Sampler::Params& params) {
         m_sampler.reset(new Sampler(m_model, params));
     }
