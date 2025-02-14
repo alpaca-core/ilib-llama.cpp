@@ -134,8 +134,8 @@ std::vector<std::pair<Token, float>> Session::getProbs(int32_t topK, float topP)
     flushPendingState();
 
     Sampler::Params sParams = {
-        .topP = topP,
         .topK = topK,
+        .topP = topP,
         .samplerSequence = {
             Sampler::SamplingType::Top_K,
             Sampler::SamplingType::Top_P,

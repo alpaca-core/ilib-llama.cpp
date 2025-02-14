@@ -46,21 +46,65 @@ int main() try {
 
     // load model
     std::vector<std::string> modelGgufs = {
-        AC_TEST_DATA_LLAMA_DIR "/../../../tmp/Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf",
+        //AC_TEST_DATA_LLAMA_DIR "/../../../tmp/Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf",
         AC_TEST_DATA_LLAMA_DIR "/../../../tmp/Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf",
     };
-    std::vector<std::string> names = {
-        "Meta-Llama-3.1-70B",
-        "Meta-Llama-3.1-8B"
-    };
+    //std::vector<std::string> names = {
+    //    //"Meta-Llama-3.1-70B",
+    //    "Meta-Llama-3.1-8B"
+    //};
 
     // std::string prompt = "President George W.";
     std::string prompt = "In the 23th centuty";
 
-    using ProbVector = std::vector<std::pair<ac::llama::Token, float>>;
-    ProbVector results[modelGgufs.size()];
 
+    std::vector<std::string> names = {
+        "Meta-Llama-3.1-8B-cuda",
+        "Meta-Llama-3.1-8B-cpu-amd",
+        "Meta-Llama-3.1-8B-metal",
+        "Meta-Llama-3.1-8B-cpu-mac",
+        "Meta-Llama-3.1-70B-metal",
+        "Meta-Llama-3.1-70B-cpu-mac",
+    };
+
+    std::vector<ac::llama::ProbVector> results;
+    results.resize(names.size());
+
+    // 8b cuda
     results[0] = {
+        {11, 16.9658},
+        {22706, 13.6525},
+        {279, 13.2836},
+        {12966, 12.5076},
+    };
+
+    // 8b cpu amd
+    results[1] = {
+        {11, 17.0296},
+        {22706, 13.5018},
+        {279, 13.4278},
+        {264, 12.7805},
+        {12966, 12.7211},
+    };
+
+    // 8b metal
+    results[2] = {
+        {11, 16.9334},
+        {22706, 13.4646},
+        {279, 13.3156},
+        {12966, 12.6787},
+    };
+
+    // 8b cpu mac
+    results[3] = {
+        { 11, 17.0128 },
+        { 279, 13.4753 },
+        { 22706, 13.452 },
+        { 264, 12.6863 },
+    };
+
+    // 70b metal
+    results[4] = {
         {11, 15.7284},
         {279, 13.7213},
         {22706, 13.208},
@@ -69,7 +113,8 @@ int main() try {
         {584, 11.6679}
     };
 
-    results[1] = {
+    // 70b cpu mac
+    results[5] = {
         { 11, 15.6762 },
         { 279, 13.6525 },
         { 22706, 13.2836 },
@@ -78,35 +123,45 @@ int main() try {
         { 1070, 11.6473 }
     };
 
-    // for (size_t i = 0; i < modelGgufs.size(); i++) {
-    //     ac::llama::Model::Params modelParams = {
-    //         .gpu = true,
-    //     };
+     //for (size_t i = 0; i < modelGgufs.size(); i++) {
+     //    ac::llama::Model::Params modelParams = {
+     //        .gpu = true,
+     //    };
 
-    //     auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(modelGgufs[i], modelLoadProgressCallback, modelParams);
-    //     ac::llama::Model model(lmodel, modelParams);
-    //     ac::llama::Instance instance(model, {
-    //         .ctxSize = 1024
-    //     });
+     //    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(modelGgufs[i], modelLoadProgressCallback, modelParams);
+     //    ac::llama::Model model(lmodel, modelParams);
+     //    ac::llama::Instance instance(model, {
+     //        .ctxSize = 1024
+     //    });
 
-    //     // start session
-    //     auto& session = instance.startSession({});
-    //     session.setInitialPrompt(model.vocab().tokenize(prompt, true, true));
-    //     auto a = session.getProbs(10);
+     //    // start session
+     //    auto& session = instance.startSession({});
+     //    session.setInitialPrompt(model.vocab().tokenize(prompt, true, true));
+     //    auto a = session.getProbs(10);
 
-    //     results[i] = a;
-    // };
+     //    results[i] = a;
+     //};
 
-    for (size_t i = 1; i < modelGgufs.size(); i++) {
-        std::cerr << "Model: " << modelGgufs[i - 1] << " vs " << modelGgufs[i] << std::endl;
-        auto& a = results[i - 1];
-        auto& b = results[i];
+    for (size_t i = 0; i < results.size(); i++) {
+        auto& a = results[i];
 
-        ac::llama::LogitComparer c;
-        const auto size = std::min(a.size(), b.size());
-        auto res = c.compare(a, b, size);
+        for (size_t j = i + 1; j < results.size(); j++)
+        {
+            auto& b = results[j];
 
-        std::cout << "The models are " << (res ? "equal" : "different") << std::endl;
+            std::cerr << names[i] << " vs " << names[j] << std::endl;
+
+            ac::llama::LogitComparer c;
+            const auto size = std::min(a.size(), b.size());
+            auto res = c.compare(a, b, size);
+
+            bool shouldBeSame = names[i].find("8B") == names[j].find("8B");
+
+            std::cout << "The models should be "<< (shouldBeSame ? "EQUAL" : "DIFFERENT") << std::endl;
+            std::cout << "The models are " << (res ? "EQUAL" : "DIFFERENT") << std::endl;
+
+            std::cout << "\n===========================================================\n\n";
+        }
     }
 
 
