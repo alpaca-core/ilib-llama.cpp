@@ -49,8 +49,8 @@ int main() try {
 
     auto result = llama.call<schema::StateInstance::OpRun>({
         .prompt = prompt,
-        .maxTokens = 20,
-        .antiprompts = antiprompts
+        .antiprompts = antiprompts,
+        .maxTokens = 20
     });
 
     std::cout << "Prompt: " << prompt << "\n";
