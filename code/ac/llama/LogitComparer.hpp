@@ -46,26 +46,23 @@ public:
     ~LogitComparer() = default;
 
     bool compare(const ProbVector& logit1, const ProbVector& logit2, size_t size) {
-        float errSum = 0.0;
-        for (size_t i = 0; i < size; ++i) {
-            auto err = std::pow(logit1[i].second - logit2[i].second, 2.0);
-            errSum += err;
-        }
+        auto l1Trim = logit1;
+        l1Trim.resize(size);
 
-        float sqErr = std::sqrt(errSum);
-        std::cout << "err: " << errSum << ", sqErr: " << sqErr << std::endl;
+        auto l2Trim = logit2;
+        l2Trim.resize(size);
 
         float similarity = cosine_similarity(logit1, logit2);
         std::cout << "cosine similarity: " << similarity << std::endl;
 
-        float jsdRes = jsd(logit1, logit2);
-        std::cout << "jsd: " << jsdRes << std::endl;
+        float similarityTrim = cosine_similarity(l1Trim, l2Trim);
+        std::cout << "cosine similarity trim: " << similarityTrim << std::endl;
 
         auto p1 = softmax(logit1);
         auto p2 = softmax(logit2);
 
         float jsdP = jsd(p1, p2);
-        std::cout << "jsd probs: " << jsdP << std::endl;
+        std::cout << "jsd probs (< 0.01 ? "<< (jsdP < 0.01 ? "YES" : "NO") << "): " << jsdP << std::endl;
 
         std::cout << "\n\n" << std::endl;
 
@@ -87,10 +84,10 @@ public:
             }
         };
 
-        printTheRest(logit1, "70b");
-        printTheRest(logit2, "8b");
+        printTheRest(logit1, "l1");
+        printTheRest(logit2, "l2");
 
-        return true;
+        return jsdP < 0.01;
     }
 
     float jsd(const ProbVector& logits1, const ProbVector& logits2) {
@@ -99,16 +96,25 @@ public:
         for (const auto& p : logits1) logit_map1[p.first] = p.second;
         for (const auto& p : logits2) logit_map2[p.first] = p.second;
 
+        std::cout << "The probs" << std::endl;
+
         std::unordered_map<int32_t, float> avg_dist;
         for (const auto& [token, logit1] : logit_map1) {
+            std::cout << logit1 << ", ";
             float logit2 = logit_map2.count(token) ? logit_map2[token] : 0.0f;
             avg_dist[token] = (logit1 + logit2) / 2.0f;
         }
+
+        std::cout << std::endl;
+
         for (const auto& [token, logit2] : logit_map2) {
+            std::cout << logit2 << ", ";
             if (!logit_map1.count(token)) {
                 avg_dist[token] = logit2 / 2.0f;
             }
         }
+
+        std::cout << std::endl;
 
         auto kl_divergence = [](const std::unordered_map<int32_t, float>& P, const std::unordered_map<int32_t, float>& Q) {
             float kl = 0.0f;
@@ -137,17 +143,17 @@ public:
 
         // Compute norms for logits1
         for (const auto& [token, logit] : logit_map1) {
+            norm1 += logit * logit;
             if (logit_map2.count(token)) {
                 dot_product += logit * logit_map2[token];
-                norm1 += logit * logit;
             }
         }
 
         // Compute norm for logits2
         for (const auto& [token, logit] : logit_map2) {
-            if (logit_map1.count(token)) {
+            //if (logit_map1.count(token)) {
                 norm2 += logit * logit;
-            }
+            //}
         }
 
         // Prevent division by zero
