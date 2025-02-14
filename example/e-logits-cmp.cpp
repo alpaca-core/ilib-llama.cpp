@@ -10,6 +10,7 @@
 #include <ac/llama/Instance.hpp>
 #include <ac/llama/Session.hpp>
 #include <ac/llama/ControlVector.hpp>
+#include <ac/llama/LogitComparer.hpp>
 
 // logging
 #include <ac/jalog/Instance.hpp>
@@ -26,107 +27,136 @@ int main() try {
     ac::jalog::Instance jl;
     jl.setup().add<ac::jalog::sinks::ColorSink>();
 
+    auto modelLoadProgressCallback = [](float progress) {
+        const int barWidth = 50;
+        static float currProgress = 0;
+        auto delta = int(progress * barWidth) - int(currProgress * barWidth);
+        for (int i = 0; i < delta; i++) {
+            std::cout.put('=');
+        }
+        currProgress = progress;
+        if (progress == 1.f) {
+            std::cout << '\n';
+        }
+        return true;
+    };
+
     // initialize the library
     ac::llama::initLibrary();
 
     // load model
     std::vector<std::string> modelGgufs = {
-        AC_TEST_DATA_LLAMA_DIR "/../../.." "/Thoth-Llama3.2-3B-IQ4_NL.gguf",
-        AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
+        AC_TEST_DATA_LLAMA_DIR "/../../../tmp/Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf",
+        AC_TEST_DATA_LLAMA_DIR "/../../../tmp/Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf",
     };
     std::vector<std::string> names = {
-        "llam3.2-3b-iq4_nl",
-        "gpt2-117m-q6_k"
+        "Meta-Llama-3.1-70B",
+        "Meta-Llama-3.1-8B"
     };
 
     // std::string prompt = "President George W.";
     std::string prompt = "In the 23th centuty";
 
     using ProbVector = std::vector<std::pair<ac::llama::Token, float>>;
-    std::pair<ProbVector, ProbVector> results[modelGgufs.size()];
+    ProbVector results[modelGgufs.size()];
 
-    for (size_t i = 0; i < modelGgufs.size(); i++)
-    {
-        ac::llama::Model::Params modelParams = {
-            .gpu = true,
-        };
-
-        // ac::llama::Model::Params modelParamsCpu = {
-        //     .gpu = false,
-        // };
-
-        auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(modelGgufs[i], nullptr, modelParams);
-        ac::llama::Model model(lmodel, modelParams);
-        ac::llama::Instance instance(model, {});
-
-        // auto lmodelCpu = ac::llama::ModelRegistry::getInstance().loadModel(modelGgufs[i], cb, modelParamsCpu);
-        // ac::llama::Model modelCpu(lmodel, modelParamsCpu);
-        // ac::llama::Instance instanceCpu(modelCpu, {});
-
-        // start session
-        auto& session = instance.startSession({});
-        session.setInitialPrompt(model.vocab().tokenize(prompt, true, true));
-        auto a = session.getProbs(10);
-
-        // 117m
-        // auto& sessionCpu = instanceCpu.startSession({});
-        // sessionCpu.setInitialPrompt(modelCpu.vocab().tokenize(prompt, true, true));
-        // auto b = sessionCpu.getProbs(10);
-
-        // if (a.size() != b.size()) {
-        //     std::cerr << "Logits size mismatch for " << modelGgufs[i] << std::endl;
-        //     continue;
-        // }
-
-        results[i].first = a;
-        // results[i].second = b;
+    results[0] = {
+        {11, 15.7284},
+        {279, 13.7213},
+        {22706, 13.208},
+        {1174, 12.4862},
+        {264, 12.4639},
+        {584, 11.6679}
     };
 
-    std::cout << "Prompt: " << prompt << std::endl;
-    for (size_t i = 0; i < modelGgufs.size(); i++) {
-        std::cerr << "Model: " << modelGgufs[i] << std::endl;
-        auto& a = results[i].first;
+    results[1] = {
+        { 11, 15.6762 },
+        { 279, 13.6525 },
+        { 22706, 13.2836 },
+        { 264, 12.5076 },
+        { 1174, 12.4008 },
+        { 1070, 11.6473 }
+    };
 
-#if 0 // GPU
-        {
-            std::ofstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
-            size_t s = a.size();
-            out.write((char*)&s, sizeof(s));
-            out.write((char*)a.data(), a.size() * sizeof(a[0]));
-            out.close();
-        }
-#else
-        ProbVector b;
-        {
-            std::ifstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
-            size_t s;
-            out.read((char*)&s, sizeof(s));
-            b.resize(s);
-            out.read((char*)b.data(), b.size() * sizeof(b[0]));
-            out.close();
-        }
+    // for (size_t i = 0; i < modelGgufs.size(); i++) {
+    //     ac::llama::Model::Params modelParams = {
+    //         .gpu = true,
+    //     };
 
-        std::cout << "\t\t\tCPU vs GPU" << std::endl;
+    //     auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(modelGgufs[i], modelLoadProgressCallback, modelParams);
+    //     ac::llama::Model model(lmodel, modelParams);
+    //     ac::llama::Instance instance(model, {
+    //         .ctxSize = 1024
+    //     });
 
-        {
-            float errSum = 0.0;
-            for (size_t j = 0; j < a.size(); j++) {
-                auto err = std::pow(a[j].second - b[j].second, 2.0);
-                errSum += err;
-            }
+    //     // start session
+    //     auto& session = instance.startSession({});
+    //     session.setInitialPrompt(model.vocab().tokenize(prompt, true, true));
+    //     auto a = session.getProbs(10);
 
-            float sqErr = std::sqrt(errSum);
-            std::cout << names[i] << " err: " << errSum << ", sqErr: " << sqErr << std::endl;
-        }
+    //     results[i] = a;
+    // };
 
-        for (size_t j = 0; j < a.size(); j++) {
-            auto err = std::abs(a[j].second - b[j].second);
-            std::cout << "[" << i << "]" << (err < 0.001 ? " OK" : " MISMATCH") << " (err < 0.001)."
-                        <<" t: [" << a[j].first  << "] vs [" << b[j].first << "],"
-                        <<" p: [" << a[j].second << "] vs [" << b[j].second << "]"
-                        << std::endl;
-        }
-#endif
+    for (size_t i = 1; i < modelGgufs.size(); i++) {
+        std::cerr << "Model: " << modelGgufs[i - 1] << " vs " << modelGgufs[i] << std::endl;
+        auto& a = results[i - 1];
+        auto& b = results[i];
+
+        ac::llama::LogitComparer c;
+        const auto size = std::min(a.size(), b.size());
+        auto res = c.compare(a, b, size);
+
+        std::cout << "The models are " << (res ? "equal" : "different") << std::endl;
+    }
+
+
+    {
+//         std::cout << "Prompt: " << prompt << std::endl;
+//         for (size_t i = 0; i < modelGgufs.size(); i++) {
+//             std::cerr << "Model: " << modelGgufs[i] << std::endl;
+//             auto& a = results[i].first;
+
+// #if 0 // GPU
+//             {
+//                 std::ofstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
+//                 size_t s = a.size();
+//                 out.write((char*)&s, sizeof(s));
+//                 out.write((char*)a.data(), a.size() * sizeof(a[0]));
+//                 out.close();
+//             }
+// #else
+//             ProbVector b;
+//             {
+//                 std::ifstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
+//                 size_t s;
+//                 out.read((char*)&s, sizeof(s));
+//                 b.resize(s);
+//                 out.read((char*)b.data(), b.size() * sizeof(b[0]));
+//                 out.close();
+//             }
+
+//             std::cout << "\t\t\tCPU vs GPU" << std::endl;
+
+//             {
+//                 float errSum = 0.0;
+//                 for (size_t j = 0; j < a.size(); j++) {
+//                     auto err = std::pow(a[j].second - b[j].second, 2.0);
+//                     errSum += err;
+//                 }
+
+//                 float sqErr = std::sqrt(errSum);
+//                 std::cout << names[i] << " err: " << errSum << ", sqErr: " << sqErr << std::endl;
+//             }
+
+//             for (size_t j = 0; j < a.size(); j++) {
+//                 auto err = std::abs(a[j].second - b[j].second);
+//                 std::cout << "[" << i << "]" << (err < 0.001 ? " OK" : " MISMATCH") << " (err < 0.001)."
+//                             <<" t: [" << a[j].first  << "] vs [" << b[j].first << "],"
+//                             <<" p: [" << a[j].second << "] vs [" << b[j].second << "]"
+//                             << std::endl;
+//             }
+// #endif
+//         }
     }
 
     return 0;

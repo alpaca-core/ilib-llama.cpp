@@ -183,7 +183,7 @@ std::vector<std::pair<Token, float>> Sampler::extractProbs(llama_context* lctx) 
 
     for (size_t i = 0; i < cur.size; i++)
     {
-        result[i] = {cur.data[i].id, cur.data[i].p};
+        result[i] = {cur.data[i].id, cur.data[i].logit};
     }
 
     return result;
