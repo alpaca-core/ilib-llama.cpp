@@ -126,7 +126,7 @@ Token Session::getToken() {
     return m_state.m_currToken;
 }
 
-std::vector<std::pair<Token, float>> Session::getProbs(int32_t topK, float topP) {
+TokenDataVector Session::getProbs(int32_t topK, float topP) {
     if (m_state.m_phase != State::Phase::Generating) {
         throw_ex{} << "Session hasn't started yet";
     }
