@@ -182,7 +182,15 @@ struct StateInstance {
         using Return = nullptr_t;
     };
 
-    using Ops = std::tuple<OpRun, OpGetTokenData, OpCompareTokenData, OpChatBegin>;
+    struct OpStopInstance {
+        static inline constexpr std::string_view id = "stop-instance";
+        static inline constexpr std::string_view desc = "Stop the current instance";
+
+        using Params = nullptr_t;
+        using Return = nullptr_t;
+    };
+
+    using Ops = std::tuple<OpRun, OpGetTokenData, OpCompareTokenData, OpChatBegin, OpStopInstance>;
     using Ins = std::tuple<>;
     using Outs = std::tuple<>;
 };

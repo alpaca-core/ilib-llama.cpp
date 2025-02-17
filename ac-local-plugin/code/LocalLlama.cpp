@@ -212,6 +212,11 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
         llama::Instance& m_instance;
         std::optional<ChatSession> m_chatSession;
 
+        enum class State {
+            Running,
+            End
+        } state = State::Running;
+
         Runner(llama::Instance& instance)
             : m_instance(instance)
         {
@@ -319,6 +324,11 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             m_chatSession.emplace(m_instance, params);
             return {};
         }
+
+        Schema::OpStopInstance::Return on(Schema::OpStopInstance, Schema::OpStopInstance::Params&&) {
+            state = State::End;
+            return {};
+        }
     };
 
     co_await io.push(Frame_stateChange(Schema::id));
@@ -333,6 +343,10 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             runner.m_chatSession.reset();
 
             co_await io.push(Frame_stateChange(Schema::id));
+        }
+
+        if (runner.state == Runner::State::End) {
+            co_return;
         }
     }
 }
@@ -379,6 +393,8 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> mod
         co_await io.push(runner.dispatch(*f));
         if (runner.instance) {
             co_await Llama_runInstance(io, std::move(runner.instance));
+
+            runner.instance.reset();
         }
     }
 }
