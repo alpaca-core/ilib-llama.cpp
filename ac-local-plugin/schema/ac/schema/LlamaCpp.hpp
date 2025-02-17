@@ -110,6 +110,58 @@ struct StateInstance {
         };
     };
 
+    struct OpGetTokenData {
+        static inline constexpr std::string_view id = "get-token-data";
+        static inline constexpr std::string_view desc = "Get the current state of the token context";
+
+        using Params = nullptr_t;
+        struct Return {
+            Field<std::vector<uint32_t>> tokens;
+            Field<std::vector<float>> logits;
+            Field<std::vector<float>> probs;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(tokens, "tokens", "Tokens in the context");
+                v(logits, "logits", "Logits for the tokens");
+                v(probs, "probs", "Probabilities for the tokens");
+            }
+        };
+    };
+
+    struct OpCompareTokenData {
+        static inline constexpr std::string_view id = "compare-tokens";
+        static inline constexpr std::string_view desc = "Compare two sets of tokens";
+
+        struct Params {
+            Field<std::vector<int32_t>> tokens1;
+            Field<std::vector<float>> logits1;
+            Field<std::vector<float>> probs1;
+            Field<std::vector<int32_t>> tokens2;
+            Field<std::vector<float>> logits2;
+            Field<std::vector<float>> probs2;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(tokens1, "tokens1", "Tokens in the first set");
+                v(logits1, "logits1", "Logits for the first set");
+                v(probs1, "probs1", "Probabilities for the first set");
+                v(tokens2, "tokens2", "Tokens in the second set");
+                v(logits2, "logits2", "Logits for the second set");
+                v(probs2, "probs2", "Probabilities for the second set");
+            }
+        };
+
+        struct Return {
+            Field<bool> equal;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(equal, "equal", "Whether the two sets are equal");
+            }
+        };
+    };
+
     struct OpChatBegin {
         static inline constexpr std::string_view id = "begin-chat";
         static inline constexpr std::string_view desc = "Begin a chat session";
@@ -130,7 +182,7 @@ struct StateInstance {
         using Return = nullptr_t;
     };
 
-    using Ops = std::tuple<OpRun, OpChatBegin>;
+    using Ops = std::tuple<OpRun, OpGetTokenData, OpCompareTokenData, OpChatBegin>;
     using Ins = std::tuple<>;
     using Outs = std::tuple<>;
 };

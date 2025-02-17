@@ -8,6 +8,7 @@
 #include <ac/llama/Model.hpp>
 #include <ac/llama/AntipromptManager.hpp>
 #include <ac/llama/ControlVector.hpp>
+#include <ac/llama/LogitComparer.hpp>
 
 #include <ac/local/Provider.hpp>
 #include <ac/local/ProviderSessionContext.hpp>
@@ -257,6 +258,61 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             m_instance.stopSession();
 
             return ret;
+        }
+
+        Schema::OpGetTokenData::Return on(Schema::OpGetTokenData, Schema::OpGetTokenData::Params&&) {
+            if (m_chatSession) {
+                throw_ex{} << "llama: chat already started";
+            }
+
+            auto& s = m_instance.startSession({});
+            auto tokenData = s.getProbs(10);
+
+            Schema::OpGetTokenData::Return ret;
+            ret.tokens.value().resize(tokenData.size());
+            ret.logits.value().resize(tokenData.size());
+            ret.probs.value().resize(tokenData.size());
+            for (size_t i = 0; i < tokenData.size(); i++) {
+                ret.tokens.value()[i] = tokenData[i].token;
+                ret.logits.value()[i] = tokenData[i].logit;
+                ret.probs.value()[i] = tokenData[i].prob;
+            }
+
+            return ret;
+        }
+
+        Schema::OpCompareTokenData::Return on(Schema::OpCompareTokenData, Schema::OpCompareTokenData::Params&& params) {
+            assert(params.logits1.value().size() == params.tokens1.value().size() &&
+                params.logits1.value().size()== params.probs1.value().size());
+
+            assert(params.logits2.value().size() == params.tokens2.value().size() &&
+                params.logits2.value().size()== params.probs2.value().size());
+
+            ac::llama::TokenDataVector data1;
+            data1.resize(params.tokens1.value().size());
+            for (size_t i = 0; i < params.tokens1.value().size(); i++) {
+                data1[i] = ac::llama::TokenData{
+                    .token = params.tokens1.value()[i],
+                    .logit = params.logits1.value()[i],
+                    .prob = params.probs1.value()[i]
+                };
+            }
+
+            ac::llama::TokenDataVector data2;
+            data2.resize(params.tokens2.value().size());
+            for (size_t i = 0; i < params.tokens1.value().size(); i++) {
+                data2[i] = ac::llama::TokenData{
+                    .token = params.tokens2.value()[i],
+                    .logit = params.logits2.value()[i],
+                    .prob = params.probs2.value()[i]
+                };
+            }
+
+            auto minSize = std::min(data1.size(), data2.size());
+            ac::llama::LogitComparer cmp;
+            return {
+                .equal = cmp.compare(data1, data2, minSize)
+            };
         }
 
         Schema::OpChatBegin::Return on(Schema::OpChatBegin, Schema::OpChatBegin::Params&& params) {
