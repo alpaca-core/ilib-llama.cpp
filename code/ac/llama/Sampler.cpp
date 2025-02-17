@@ -172,18 +172,18 @@ Token Sampler::sample(llama_context* lctx, int idx, bool grammarFirst) {
     return cur.data[cur.selected].id;
 }
 
-std::vector<std::pair<Token, float>> Sampler::extractProbs(llama_context* lctx) {
+TokenDataVector Sampler::extractProbs(llama_context* lctx) {
    auto chain = m_samplerChain.get();
 
     auto cur = fillLogits(m_cur, lctx, -1);
 
     llama_sampler_apply(chain, &cur);
 
-    std::vector<std::pair<Token, float>> result(cur.size);
+    TokenDataVector result(cur.size);
 
     for (size_t i = 0; i < cur.size; i++)
     {
-        result[i] = {cur.data[i].id, cur.data[i].logit};
+        result[i] = {cur.data[i].id, cur.data[i].logit, cur.data[i].p};
     }
 
     return result;

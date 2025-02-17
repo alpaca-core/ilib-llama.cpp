@@ -67,7 +67,7 @@ int main() try {
         "Meta-Llama-3.1-70B-cpu-mac",
     };
 
-    std::vector<ac::llama::ProbVector> results;
+    std::vector<ac::llama::TokenDataVector> results;
     results.resize(names.size());
 
     // 8b cuda
@@ -162,56 +162,6 @@ int main() try {
 
             std::cout << "\n===========================================================\n\n";
         }
-    }
-
-
-    {
-//         std::cout << "Prompt: " << prompt << std::endl;
-//         for (size_t i = 0; i < modelGgufs.size(); i++) {
-//             std::cerr << "Model: " << modelGgufs[i] << std::endl;
-//             auto& a = results[i].first;
-
-// #if 0 // GPU
-//             {
-//                 std::ofstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
-//                 size_t s = a.size();
-//                 out.write((char*)&s, sizeof(s));
-//                 out.write((char*)a.data(), a.size() * sizeof(a[0]));
-//                 out.close();
-//             }
-// #else
-//             ProbVector b;
-//             {
-//                 std::ifstream out(names[i] + "-gpu"+ ".logits", std::ios::binary);
-//                 size_t s;
-//                 out.read((char*)&s, sizeof(s));
-//                 b.resize(s);
-//                 out.read((char*)b.data(), b.size() * sizeof(b[0]));
-//                 out.close();
-//             }
-
-//             std::cout << "\t\t\tCPU vs GPU" << std::endl;
-
-//             {
-//                 float errSum = 0.0;
-//                 for (size_t j = 0; j < a.size(); j++) {
-//                     auto err = std::pow(a[j].second - b[j].second, 2.0);
-//                     errSum += err;
-//                 }
-
-//                 float sqErr = std::sqrt(errSum);
-//                 std::cout << names[i] << " err: " << errSum << ", sqErr: " << sqErr << std::endl;
-//             }
-
-//             for (size_t j = 0; j < a.size(); j++) {
-//                 auto err = std::abs(a[j].second - b[j].second);
-//                 std::cout << "[" << i << "]" << (err < 0.001 ? " OK" : " MISMATCH") << " (err < 0.001)."
-//                             <<" t: [" << a[j].first  << "] vs [" << b[j].first << "],"
-//                             <<" p: [" << a[j].second << "] vs [" << b[j].second << "]"
-//                             << std::endl;
-//             }
-// #endif
-//         }
     }
 
     return 0;
