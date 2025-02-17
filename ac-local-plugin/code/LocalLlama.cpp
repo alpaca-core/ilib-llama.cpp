@@ -204,6 +204,11 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
         llama::Instance& m_instance;
         std::optional<ChatSession> m_chatSession;
 
+        enum class State {
+            Running,
+            End
+        } state = State::Running;
+
         Runner(llama::Instance& instance)
             : m_instance(instance)
         {
@@ -312,6 +317,11 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
             m_chatSession.emplace(m_instance, params);
             return {};
         }
+
+        Schema::OpStopInstance::Return on(Schema::OpStopInstance, Schema::OpStopInstance::Params&&) {
+            state = State::End;
+            return {};
+        }
     };
 
     co_await io.pushFrame(Frame_stateChange(Schema::id));
@@ -326,6 +336,10 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
             runner.m_chatSession.reset();
 
             co_await io.pushFrame(Frame_stateChange(Schema::id));
+        }
+
+        if (runner.state == Runner::State::End) {
+            co_return;
         }
     }
 }
@@ -372,6 +386,8 @@ SessionCoro<void> Llama_runModel(coro::Io io, std::unique_ptr<llama::Model> mode
         co_await io.pushFrame(runner.dispatch(f.frame));
         if (runner.instance) {
             co_await Llama_runInstance(io, std::move(runner.instance));
+
+            runner.instance.reset();
         }
     }
 }
