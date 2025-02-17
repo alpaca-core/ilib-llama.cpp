@@ -60,6 +60,17 @@ int main() try {
                 << "<prompt>" << prompt << "</prompt> "
                 << result.result.value() << '\n';
 
+    auto result2 = llama.call<schema::StateInstance::OpGetTokenData>({});
+
+    auto result3 = llama.call<schema::StateInstance::OpCompareTokenData>({
+        .tokens1 = result2.tokens,
+        .logits1 = result2.logits,
+        .probs1 = result2.probs,
+        .tokens2 = result2.tokens,
+        .logits2 = result2.logits,
+        .probs2 = result2.probs
+    });
+
     return 0;
 }
 catch (std::exception& e) {

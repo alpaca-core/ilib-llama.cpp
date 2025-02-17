@@ -127,10 +127,6 @@ Token Session::getToken() {
 }
 
 TokenDataVector Session::getProbs(int32_t topK, float topP) {
-    if (m_state.m_phase != State::Phase::Generating) {
-        throw_ex{} << "Session hasn't started yet";
-    }
-
     flushPendingState();
 
     Sampler::Params sParams = {

@@ -235,6 +235,7 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
 
             auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
             s.setInitialPrompt(promptTokens);
+            std::cout <<"Running model with prompt: " << prompt << std::endl;
 
             auto& model = m_instance.model();
             ac::llama::AntipromptManager antiprompt;
@@ -273,17 +274,26 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             auto& s = m_instance.startSession({});
             auto tokenData = s.getProbs(10);
 
-            Schema::OpGetTokenData::Return ret;
-            ret.tokens.value().resize(tokenData.size());
-            ret.logits.value().resize(tokenData.size());
-            ret.probs.value().resize(tokenData.size());
+            std::vector<int32_t> tokens;
+            std::vector<float> logits;
+            std::vector<float> probs;
+
+            tokens.resize(tokenData.size());
+            logits.resize(tokenData.size());
+            probs.resize(tokenData.size());
             for (size_t i = 0; i < tokenData.size(); i++) {
-                ret.tokens.value()[i] = tokenData[i].token;
-                ret.logits.value()[i] = tokenData[i].logit;
-                ret.probs.value()[i] = tokenData[i].prob;
+                tokens[i] = tokenData[i].token;
+                logits[i] = tokenData[i].logit;
+                probs[i] = tokenData[i].prob;
             }
 
-            return ret;
+            m_instance.stopSession();
+
+            return {
+                .tokens = std::move(tokens),
+                .logits = std::move(logits),
+                .probs = std::move(probs)
+            };
         }
 
         Schema::OpCompareTokenData::Return on(Schema::OpCompareTokenData, Schema::OpCompareTokenData::Params&& params) {
@@ -421,6 +431,8 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep) {
             auto gguf = params.ggufPath.valueOr("");
             auto loras = params.loraPaths.valueOr({});
             auto lparams = ModelParams_fromSchema(params);
+
+            std::cout << "Loading model from " << gguf << std::endl;
 
             model = std::make_unique<llama::Model>(
                 llama::ModelRegistry::getInstance().loadModel(gguf.c_str(), {}, lparams),
