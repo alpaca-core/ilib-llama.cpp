@@ -3,6 +3,9 @@
 //
 #include "LogitComparer.hpp"
 
+#include <unordered_map>
+
+
 namespace ac::llama {
 
 TokenDataVector softmax(const TokenDataVector& logits) {
