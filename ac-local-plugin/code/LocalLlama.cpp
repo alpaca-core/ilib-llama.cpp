@@ -230,6 +230,7 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
 
             auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
             s.setInitialPrompt(promptTokens);
+
             std::cout <<"Running model with prompt: " << prompt << std::endl;
 
             auto& model = m_instance.model();
@@ -256,6 +257,7 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
                 result += tokenStr;
             }
 
+            s.getProbs(10);
             m_instance.stopSession();
 
             return ret;
@@ -459,8 +461,9 @@ SessionCoro<void> Llama_runSession() {
             }
         }
     }
-    catch (IoClosed&){
-        throw;
+    catch (IoClosed& e){
+        std::cerr << "Error: " << e.what() << std::endl;
+        co_return;
     }
     catch (std::exception& e) {
         throw_ex{} << "Error: " << e.what();
