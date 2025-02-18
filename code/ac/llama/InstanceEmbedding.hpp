@@ -7,6 +7,7 @@
 #include "Session.hpp"
 #include <astl/mem_ext.hpp>
 
+#include <cmath>
 #include <vector>
 #include <optional>
 
