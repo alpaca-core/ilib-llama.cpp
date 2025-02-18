@@ -21,7 +21,7 @@ struct StateInitial {
         static constexpr auto desc = "Load the llama.cpp model";
 
         struct Params{
-            Field<std::string> ggufPath = std::nullopt;
+            Field<std::string> ggufPath;
             Field<std::vector<std::string>> loraPaths = Default();
             Field<bool> useGpu = Default(true);
             Field<bool> vocabOnly = Default(false);
@@ -116,7 +116,7 @@ struct StateInstance {
 
         using Params = nullptr_t;
         struct Return {
-            Field<std::vector<uint32_t>> tokens;
+            Field<std::vector<int32_t>> tokens;
             Field<std::vector<float>> logits;
             Field<std::vector<float>> probs;
 
