@@ -391,16 +391,17 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> mod
         }
 
         Schema::OpStartInstance::Return on(Schema::OpStartInstance, Schema::OpStartInstance::Params iParams) {
-            auto params = InstanceParams_fromSchema(iParams);
-            auto ctrlVectors = iParams.ctrlVectorPaths.valueOr({});
-            std::vector<llama::ControlVector::LoadInfo> ctrlloadInfo;
-            for (auto& path: ctrlVectors) {
-                ctrlloadInfo.push_back({path, 2});
-            }
+            instance = std::make_unique<llama::Instance>(lmodel, InstanceParams_fromSchema(iParams));
 
-            ac::llama::ControlVector ctrl(lmodel, ctrlloadInfo);
-            instance = std::make_unique<llama::Instance>(lmodel, params);
-            instance->addControlVector(ctrl);
+            auto ctrlVectors = iParams.ctrlVectorPaths.valueOr({});
+            if (ctrlVectors.size()) {
+                std::vector<llama::ControlVector::LoadInfo> ctrlloadInfo;
+                for (auto& path : ctrlVectors) {
+                    ctrlloadInfo.push_back({ path, 2 });
+                }
+                ac::llama::ControlVector ctrl(lmodel, ctrlloadInfo);
+                instance->addControlVector(ctrl);
+            }
 
             return {};
         }
