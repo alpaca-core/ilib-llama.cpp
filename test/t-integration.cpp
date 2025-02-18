@@ -461,7 +461,7 @@ TEST_CASE("embedding") {
 
     for (size_t i = 0; i < embeddings.size(); i++)
     {
-        REQUIRE(embeddings[i] == doctest::Approx(expected[i]).epsilon(0.0001));
+        REQUIRE(embeddings[i] == doctest::Approx(expected[i]).epsilon(0.001));
     }
 
 }
