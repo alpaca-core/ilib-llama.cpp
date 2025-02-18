@@ -6,6 +6,7 @@
 #include "Vocab.hpp"
 #include <astl/mem_ext.hpp>
 #include <astl/ufunction.hpp>
+#include <algorithm>
 #include <string>
 #include <span>
 #include <vector>
