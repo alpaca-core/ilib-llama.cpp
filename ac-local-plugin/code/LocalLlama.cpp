@@ -376,20 +376,30 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> mod
         llama::Model& lmodel;
         std::unique_ptr<llama::Instance> instance;
 
-        static llama::Instance::InitParams InstanceParams_fromSchema(sc::StateModelLoaded::OpStartInstance::Params) {
+        static llama::Instance::InitParams InstanceParams_fromSchema(Schema::OpStartInstance::Params& params) {
             llama::Instance::InitParams ret;
+            if (params.batchSize.hasValue()) {
+                ret.batchSize = params.batchSize.valueOr(2048);
+            }
+            if (params.ctxSize.hasValue()) {
+                ret.ctxSize = params.ctxSize.valueOr(1024);
+            }
+            if (params.ubatchSize.hasValue()) {
+                ret.ubatchSize = params.ubatchSize.valueOr(512);
+            }
             return ret;
         }
 
-        Schema::OpStartInstance::Return on(Schema::OpStartInstance, Schema::OpStartInstance::Params params) {
-            auto ctrlVectors = params.ctrlVectorPaths.valueOr({});
+        Schema::OpStartInstance::Return on(Schema::OpStartInstance, Schema::OpStartInstance::Params iParams) {
+            auto params = InstanceParams_fromSchema(iParams);
+            auto ctrlVectors = iParams.ctrlVectorPaths.valueOr({});
             std::vector<llama::ControlVector::LoadInfo> ctrlloadInfo;
             for (auto& path: ctrlVectors) {
                 ctrlloadInfo.push_back({path, 2});
             }
 
             ac::llama::ControlVector ctrl(lmodel, ctrlloadInfo);
-            instance = std::make_unique<llama::Instance>(lmodel, InstanceParams_fromSchema(params));
+            instance = std::make_unique<llama::Instance>(lmodel, params);
             instance->addControlVector(ctrl);
 
             return {};
