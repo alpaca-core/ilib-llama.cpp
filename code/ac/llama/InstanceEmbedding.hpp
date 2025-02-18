@@ -8,6 +8,7 @@
 #include <astl/mem_ext.hpp>
 
 #include <vector>
+#include <optional>
 
 struct llama_context;
 
