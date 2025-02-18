@@ -42,7 +42,7 @@ int main() try {
 
     llama.expectState<schema::StateInstance>();
 
-    constexpr std::string prompt = "The first person to";
+    const std::string prompt = "The first person to";
 
     std::vector<std::string> antiprompts;
     antiprompts.push_back("user:"); // change it to "name" to break the token generation with the default input

@@ -446,6 +446,7 @@ TEST_CASE("embedding") {
     ac::llama::Model::Params iParams = {};
     const char* Model_bge_small_en = AC_TEST_DATA_LLAMA_DIR "/bge-small-en-v1.5-f16.gguf";
     auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(Model_bge_small_en, {}, iParams);
+    ac::llama::Model model(lmodel, iParams);
     CHECK(model.trainCtxLength() == 512);
     CHECK_FALSE(model.hasEncoder());
 
