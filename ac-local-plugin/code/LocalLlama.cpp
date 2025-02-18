@@ -312,7 +312,7 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
 
             ac::llama::TokenDataVector data2;
             data2.resize(params.tokens2.value().size());
-            for (size_t i = 0; i < params.tokens1.value().size(); i++) {
+            for (size_t i = 0; i < params.tokens2.value().size(); i++) {
                 data2[i] = ac::llama::TokenData{
                     .token = params.tokens2.value()[i],
                     .logit = params.logits2.value()[i],
