@@ -13,11 +13,11 @@ public:
     LogitComparer() = default;
     ~LogitComparer() = default;
 
-    bool compare(const TokenDataVector& logit1, const TokenDataVector& logit2, size_t size);
+    static bool compare(const TokenDataVector& data1, const TokenDataVector& data2);
 
 private:
-
-    float jsd(const TokenDataVector& logits1, const TokenDataVector& logits2);
+    static float jsd(const std::unordered_map<Token, float>& logits1, const std::unordered_map<Token, float>& logits2);
+    static float euclidean_distance(const TokenDataVector& logits1, int32_t count);
 
     // compute cosine similarity only for the union of the two sets of tokens
     float cosine_similarity(const TokenDataVector& logits1, const TokenDataVector& logits2);

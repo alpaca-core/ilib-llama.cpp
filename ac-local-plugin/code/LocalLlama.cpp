@@ -325,10 +325,8 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
                 };
             }
 
-            auto minSize = std::min(data1.size(), data2.size());
-            ac::llama::LogitComparer cmp;
             return {
-                .equal = cmp.compare(data1, data2, minSize)
+                .equal = ac::llama::LogitComparer::compare(data1, data2)
             };
         }
 
