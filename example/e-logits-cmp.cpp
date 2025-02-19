@@ -151,9 +151,7 @@ int main() try {
 
             std::cerr << names[i] << " vs " << names[j] << std::endl;
 
-            ac::llama::LogitComparer c;
-            const auto size = std::min(a.size(), b.size());
-            auto res = c.compare(a, b, size);
+            auto res = ac::llama::LogitComparer::compare(a, b);
 
             bool shouldBeSame = names[i].find("8B") == names[j].find("8B");
 

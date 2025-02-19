@@ -320,10 +320,8 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
                 };
             }
 
-            auto minSize = std::min(data1.size(), data2.size());
-            ac::llama::LogitComparer cmp;
             return {
-                .equal = cmp.compare(data1, data2, minSize)
+                .equal = ac::llama::LogitComparer::compare(data1, data2)
             };
         }
 
