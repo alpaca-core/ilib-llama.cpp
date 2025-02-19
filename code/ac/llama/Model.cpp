@@ -88,18 +88,20 @@ std::shared_ptr<llama_model> ModelRegistry::loadModel(
     ModelLoadProgressCb pcb,
     Model::Params params) {
 
-    // clean up expired models
-    m_models.erase(std::find_if(m_models.begin(), m_models.end(), [&](const auto& m) {
-        return m.second.expired();
-    }), m_models.end());
-
+    // First check if the model is already loaded
     std::shared_ptr<llama_model> model = nullptr;
     auto key = ModelKey{gguf, params};
     for (auto& m: m_models) {
         if (m.first == key) {
-            return m.second.lock();
+            return m.second;
         }
     }
+
+    // Then clean up expired models
+    // If their ref count is 1, it means that the only reference is the one in the registry
+    m_models.erase(std::find_if(m_models.begin(), m_models.end(), [&](const auto& m) {
+        return m.second.use_count() == 1;
+    }), m_models.end());
 
     if (!model) {
         model = std::shared_ptr<llama_model>(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free);
