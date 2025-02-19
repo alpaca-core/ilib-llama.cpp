@@ -29,46 +29,8 @@ TokenDataVector softmax(const TokenDataVector& logits) {
 }
 
 bool LogitComparer::compare(const TokenDataVector& logit1, const TokenDataVector& logit2, size_t size) {
-    auto l1Trim = logit1;
-    l1Trim.resize(size);
-
-    auto l2Trim = logit2;
-    l2Trim.resize(size);
-
-    float similarity = cosine_similarity(logit1, logit2);
-    std::cout << "cosine similarity: " << similarity << std::endl;
-
-    float similarityTrim = cosine_similarity(l1Trim, l2Trim);
-    std::cout << "cosine similarity trim: " << similarityTrim << std::endl;
-
-    auto p1 = softmax(logit1);
-    auto p2 = softmax(logit2);
-
-    float jsdP = jsd(p1, p2);
+    float jsdP = jsd(logit1, logit2);
     std::cout << "jsd probs (< 0.01 ? "<< (jsdP < 0.01 ? "YES" : "NO") << "): " << jsdP << std::endl;
-
-    std::cout << "\n\n" << std::endl;
-
-    for (size_t j = 0; j < size; j++) {
-        auto err = std::abs(logit1[j].logit - logit2[j].logit);
-        std::cout   << "[" << j << "]" << (err < 0.001 ? " OK" : " MISMATCH") << " (err < 0.001)."
-                    <<" t: [" << logit1[j].token  << "] vs [" << logit2[j].token << "],"
-                    <<" p: [" << logit1[j].logit << "] vs [" << logit2[j].logit << "]"
-                    << std::endl;
-    }
-
-    auto printTheRest = [&size](const TokenDataVector& l, const std::string& name) {
-        std::cout << "Print " << name << std::endl;
-        for (size_t j = size; j < l.size(); j++) {
-            std::cout   << "[" << j << "]"
-                        <<" t: [" << l[j].token  << "]"
-                        <<" p: [" << l[j].logit << "]"
-                        << std::endl;
-        }
-    };
-
-    printTheRest(logit1, "l1");
-    printTheRest(logit2, "l2");
 
     return jsdP < 0.01;
 }
@@ -76,24 +38,17 @@ bool LogitComparer::compare(const TokenDataVector& logit1, const TokenDataVector
 float LogitComparer::jsd(const TokenDataVector& logits1, const TokenDataVector& logits2) {
     std::unordered_map<int32_t, float> logit_map1, logit_map2;
 
-    for (const auto& p : logits1) logit_map1[p.token] = p.logit;
-    for (const auto& p : logits2) logit_map2[p.token] = p.logit;
+    for (const auto& p : logits1) logit_map1[p.token] = p.prob;
+    for (const auto& p : logits2) logit_map2[p.token] = p.prob;
 
     std::cout << "The probs" << std::endl;
 
     std::unordered_map<int32_t, float> avg_dist;
     for (const auto& [token, logit1] : logit_map1) {
-        std::cout << logit1 << ", ";
-        float logit2 = logit_map2.count(token) ? logit_map2[token] : 0.0f;
-        avg_dist[token] = (logit1 + logit2) / 2.0f;
-    }
-
-    std::cout << std::endl;
-
-    for (const auto& [token, logit2] : logit_map2) {
-        std::cout << logit2 << ", ";
-        if (!logit_map1.count(token)) {
-            avg_dist[token] = logit2 / 2.0f;
+        if (logit_map2.count(token)) {
+            std::cout << "[" << token << "]" << logit1 << " " << logit_map2[token] << ", ";
+            float logit2 = logit_map2.count(token) ? logit_map2[token] : 0.0f;
+            avg_dist[token] = (logit1 + logit2) / 2.0f;
         }
     }
 
@@ -109,7 +64,10 @@ float LogitComparer::jsd(const TokenDataVector& logits1, const TokenDataVector& 
         return kl;
     };
 
-    return (kl_divergence(logit_map1, avg_dist) + kl_divergence(logit_map2, avg_dist)) / 2.0f;
+    auto div1 = kl_divergence(logit_map1, avg_dist);
+    auto div2 = kl_divergence(logit_map2, avg_dist);
+
+    return (div1 + div2) / 2.0f;
 }
 
 
