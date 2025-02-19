@@ -28,9 +28,7 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
         llamaParams.devices = devicesCpu;
     }
 
-    if (params.gpu) {
-        llamaParams.n_gpu_layers = 10000;
-    }
+    llamaParams.n_gpu_layers = params.gpu ? 10000 : 0;
     llamaParams.vocab_only = params.vocabOnly;
 #ifndef NDEBUG
     llamaParams.check_tensors = true;
