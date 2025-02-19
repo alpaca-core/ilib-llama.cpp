@@ -89,7 +89,7 @@ private:
         }
     };
 
-    std::vector<std::pair<ModelKey, std::weak_ptr<llama_model>>> m_models;
+    std::vector<std::pair<ModelKey, std::shared_ptr<llama_model>>> m_models;
     std::unordered_map<llama_model*, std::vector<std::weak_ptr<LoraAdapter>>> m_loras;
 };
 
