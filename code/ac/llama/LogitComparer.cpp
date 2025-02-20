@@ -8,38 +8,19 @@
 
 namespace ac::llama {
 
-TokenDataVector softmax(const TokenDataVector& logits) {
-    TokenDataVector result;
-    result.resize(logits.size());
-
-    float max_l = logits[0].logit;
-    float cum_sum = 0.0f;
-
-    for (size_t i = 0; i < logits.size(); ++i) {
-        float p = expf(logits[i].logit - max_l);
-        result[i].token = logits[i].token;
-        result[i].logit = p;
-        cum_sum += p;
-    }
-
-    for (size_t i = 0; i < logits.size(); ++i) {
-        result[i].logit /= cum_sum;
-    }
-    return result;
-}
-
-
-// We apply 2 step comparison
+// We apply 3 step comparison
 // 1. Compare the euclidean distance of the logits
-//  - If the distance is less than 1% of the max distance, we consider them equal
-// 2. Compare the Jensen-Shannon divergence of the probabilities
+//  - If the distance is less than 2% of the max distance, we consider them equal
+// 2. Compare the matching tokens
+//  - If at least 80% of the tokens are the same, we consider them equal
+// 3. Compare the Jensen-Shannon divergence of the probabilities
 //  - If the divergence is less than the treshold, we consider them equal
 bool LogitComparer::compare(const TokenDataVector& data1, const TokenDataVector& data2) {
     const int32_t minSize = std::min(data1.size(), data2.size());
-    float distance1 = euclidean_distance(data1, minSize);
-    float distance2 = euclidean_distance(data2, minSize);
+    float distance1 = euclidean_distance_sq(data1, minSize);
+    float distance2 = euclidean_distance_sq(data2, minSize);
 
-    float relative_threshold = 0.03f; // 3% difference allowed
+    float relative_threshold = 0.02f; // 2% difference allowed
     float res = std::fabs(distance1 - distance2) / std::max(distance1, distance2);
     if (res > relative_threshold) {
         return false;
@@ -50,15 +31,23 @@ bool LogitComparer::compare(const TokenDataVector& data1, const TokenDataVector&
     for (const auto& p : data1) prob_map[p.token] = p.prob;
     for (const auto& p : data2) prob_map2[p.token] = p.prob;
 
-    float jsdP = jsd(prob_map, prob_map2);
-    std::cout << "jsd probs (< 0.01 ? "<< (jsdP < 0.01 ? "YES" : "NO") << "): " << jsdP << std::endl;
+    // Check if at least 80% of the tokens are the same
+    float matchingTokens = 0;
+    for (const auto& p : data1) {
+        if (prob_map2.count(p.token)) {
+            matchingTokens++;
+        }
+    }
 
-    return jsdP < 0.01;
+    float matchingPercentage = matchingTokens / minSize;
+    if (matchingPercentage < 0.8f) {
+        return false;
+    }
+
+    return jsd(prob_map, prob_map2) < 0.01;
 }
 
 float LogitComparer::jsd(const std::unordered_map<Token, float>& probs1, const std::unordered_map<Token, float>& probs2) {
-    std::cout << "The probs" << std::endl;
-
     std::unordered_map<Token, float> avg_dist;
     for (const auto& [token, p] : probs1) {
         if (probs2.count(token)) {
@@ -85,14 +74,14 @@ float LogitComparer::jsd(const std::unordered_map<Token, float>& probs1, const s
     return (div1 + div2) / 2.0f;
 }
 
-float LogitComparer::euclidean_distance(const TokenDataVector& logits1, int32_t count) {
+float LogitComparer::euclidean_distance_sq(const TokenDataVector& logits1, int32_t count) {
     float distance = 0.0f;
     for (int32_t i = 0; i < count; ++i) {
         distance += logits1[i].logit * logits1[i].logit;
     }
 
     // To achieve total result, we need to take the square root of the sum,
-    // bit since we don't need it to be accurate, we can skip it
+    // but since we don't need it to be accurate, we can skip it
     return distance;
 }
 
