@@ -3,9 +3,6 @@
 //
 #include "LogitComparer.hpp"
 
-#include <unordered_map>
-
-
 namespace ac::llama {
 
 // We apply 3 step comparison
@@ -51,12 +48,9 @@ float LogitComparer::jsd(const std::unordered_map<Token, float>& probs1, const s
     std::unordered_map<Token, float> avg_dist;
     for (const auto& [token, p] : probs1) {
         if (probs2.count(token)) {
-            std::cout << "[" << token << "]" << p << " " << probs2.at(token) << ", ";
             avg_dist[token] = (p + probs2.at(token)) / 2.0f;
         }
     }
-
-    std::cout << std::endl;
 
     auto kl_divergence = [](const std::unordered_map<Token, float>& P, const std::unordered_map<Token, float>& Q) {
         float kl = 0.0f;
@@ -83,37 +77,6 @@ float LogitComparer::euclidean_distance_sq(const TokenDataVector& logits1, int32
     // To achieve total result, we need to take the square root of the sum,
     // but since we don't need it to be accurate, we can skip it
     return distance;
-}
-
-float LogitComparer::cosine_similarity(const TokenDataVector& logits1, const TokenDataVector& logits2) {
-    std::unordered_map<int32_t, float> logit_map1, logit_map2;
-
-    for (const auto& p : logits1) logit_map1[p.token] = p.logit;
-    for (const auto& p : logits2) logit_map2[p.token] = p.logit;
-
-    float dot_product = 0.0f;
-    float norm1 = 0.0f;
-    float norm2 = 0.0f;
-
-    // Compute norms for logits1
-    for (const auto& [token, logit] : logit_map1) {
-        norm1 += logit * logit;
-        if (logit_map2.count(token)) {
-            dot_product += logit * logit_map2[token];
-        }
-    }
-
-    // Compute norm for logits2
-    for (const auto& [token, logit] : logit_map2) {
-        //if (logit_map1.count(token)) {
-            norm2 += logit * logit;
-        //}
-    }
-
-    // Prevent division by zero
-    if (norm1 == 0.0f || norm2 == 0.0f) return 0.0f;
-
-    return dot_product / (std::sqrt(norm1) * std::sqrt(norm2));
 }
 
 }

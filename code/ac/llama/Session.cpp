@@ -38,6 +38,10 @@ Session::Session(Instance& instance, llama_context* ctx, InitParams params)
     m_state.maxTokens = ctxLen - 4; // (#16)
 }
 
+Session::~Session() {
+    flushPendingState();
+}
+
 void Session::setInitialPrompt(std::span<const Token> initialPrompt) {
     if (m_state.m_phase != State::Phase::Initial) {
         throw_ex{} << "Session already started";

@@ -44,8 +44,8 @@ struct BasicRunner {
             }
             return {f.op, *ret};
         }
-        catch (IoClosed&) {
-            throw;
+        catch (IoClosed& e) {
+            return {"error", e.what()};
         }
         catch (std::exception& e) {
             return {"error", e.what()};
@@ -231,8 +231,6 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
             auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
             s.setInitialPrompt(promptTokens);
 
-            std::cout <<"Running model with prompt: " << prompt << std::endl;
-
             auto& model = m_instance.model();
             ac::llama::AntipromptManager antiprompt;
 
@@ -257,7 +255,6 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
                 result += tokenStr;
             }
 
-            s.getProbs(10);
             m_instance.stopSession();
 
             return ret;
@@ -438,8 +435,6 @@ SessionCoro<void> Llama_runSession() {
             auto loras = params.loraPaths.valueOr({});
             auto lparams = ModelParams_fromSchema(params);
 
-            std::cout << "Loading model from " << gguf << std::endl;
-
             model = std::make_unique<llama::Model>(
                 llama::ModelRegistry::getInstance().loadModel(gguf.c_str(), {}, lparams),
                 astl::move(lparams)
@@ -471,7 +466,6 @@ SessionCoro<void> Llama_runSession() {
         }
     }
     catch (IoClosed& e){
-        std::cerr << "Error: " << e.what() << std::endl;
         co_return;
     }
     catch (std::exception& e) {
