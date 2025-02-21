@@ -10,12 +10,16 @@
 #include <ac/llama/ControlVector.hpp>
 
 #include <ac/local/Provider.hpp>
+#include <ac/local/ProviderSessionContext.hpp>
 
 #include <ac/schema/LlamaCpp.hpp>
 #include <ac/schema/OpDispatchHelpers.hpp>
 
-#include <ac/frameio/SessionCoro.hpp>
 #include <ac/FrameUtil.hpp>
+#include <ac/frameio/IoEndpoint.hpp>
+
+#include <ac/xec/coro.hpp>
+#include <ac/io/exception.hpp>
 
 #include <astl/move.hpp>
 #include <astl/move_capture.hpp>
@@ -43,6 +47,9 @@ struct BasicRunner {
                 throw_ex{} << "dummy: unknown op: " << f.op;
             }
             return {f.op, *ret};
+        }
+        catch (io::stream_closed_error&) {
+            throw;
         }
         catch (std::exception& e) {
             return {"error", e.what()};
@@ -152,7 +159,7 @@ public:
     }
 };
 
-SessionCoro<void> Llama_beginChat(coro::Io io, ChatSession& chat) {
+xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
     using Schema = sc::StateChat;
 
     struct Runner : public BasicRunner {
@@ -184,20 +191,20 @@ SessionCoro<void> Llama_beginChat(coro::Io io, ChatSession& chat) {
         }
     };
 
-        co_await io.pushFrame(Frame_stateChange(Schema::id));
+    co_await io.push(Frame_stateChange(Schema::id));
 
     Runner runner(chat);
     while (true)
     {
-        auto f = co_await io.pollFrame();
-        co_await io.pushFrame(runner.dispatch(f.frame));
+        auto f = co_await io.poll();
+        co_await io.push(runner.dispatch(*f));
         if (runner.state == Runner::State::End) {
             co_return;
         }
     }
 }
 
-SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance> instance) {
+xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instance> instance) {
     using Schema = sc::StateInstance;
 
     struct Runner : public BasicRunner {
@@ -259,23 +266,23 @@ SessionCoro<void> Llama_runInstance(coro::Io io, std::unique_ptr<llama::Instance
         }
     };
 
-    co_await io.pushFrame(Frame_stateChange(Schema::id));
+    co_await io.push(Frame_stateChange(Schema::id));
 
     Runner runner(*instance);
     while (true)
     {
-        auto f = co_await io.pollFrame();
-        co_await io.pushFrame(runner.dispatch(f.frame));
+        auto f = co_await io.poll();
+        co_await io.push(runner.dispatch(*f));
         if (runner.m_chatSession) {
             co_await Llama_beginChat(io, runner.m_chatSession.value());
             runner.m_chatSession.reset();
 
-            co_await io.pushFrame(Frame_stateChange(Schema::id));
+            co_await io.push(Frame_stateChange(Schema::id));
         }
     }
 }
 
-SessionCoro<void> Llama_runModel(coro::Io io, std::unique_ptr<llama::Model> model) {
+xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> model) {
     using Schema = sc::StateModelLoaded;
 
     struct Runner : public BasicRunner {
@@ -308,20 +315,20 @@ SessionCoro<void> Llama_runModel(coro::Io io, std::unique_ptr<llama::Model> mode
         }
     };
 
-    co_await io.pushFrame(Frame_stateChange(Schema::id));
+    co_await io.push(Frame_stateChange(Schema::id));
 
     Runner runner(*model);
     while (true)
     {
-        auto f = co_await io.pollFrame();
-        co_await io.pushFrame(runner.dispatch(f.frame));
+        auto f = co_await io.poll();
+        co_await io.push(runner.dispatch(*f));
         if (runner.instance) {
             co_await Llama_runInstance(io, std::move(runner.instance));
         }
     }
 }
 
-SessionCoro<void> Llama_runSession() {
+xec::coro<void> Llama_runSession(StreamEndpoint ep) {
     using Schema = sc::StateInitial;
 
     struct Runner : public BasicRunner {
@@ -359,23 +366,23 @@ SessionCoro<void> Llama_runSession() {
     };
 
     try {
-        auto io = co_await coro::Io{};
+        auto ex = co_await xec::executor{};
+        IoEndpoint io(std::move(ep), ex);
 
-        co_await io.pushFrame(Frame_stateChange(Schema::id));
+        co_await io.push(Frame_stateChange(Schema::id));
 
         Runner runner;
 
         while (true)
         {
-            auto f = co_await io.pollFrame();
-            co_await io.pushFrame(runner.dispatch(f.frame));
+            auto f = co_await io.poll();
+            co_await io.push(runner.dispatch(*f));
             if (runner.model) {
                 co_await Llama_runModel(io, std::move(runner.model));
             }
         }
     }
-    catch (std::exception& e) {
-        throw_ex{} << "Error: " << e.what();
+    catch (io::stream_closed_error&) {
         co_return;
     }
 }
@@ -390,8 +397,8 @@ public:
         return i;
     }
 
-    virtual frameio::SessionHandlerPtr createSessionHandler(std::string_view) override {
-        return CoroSessionHandler::create(Llama_runSession());
+    virtual void createSession(ProviderSessionContext ctx) override {
+        co_spawn(ctx.executor.cpu, Llama_runSession(std::move(ctx.endpoint.session)));
     }
 };
 } // namespace

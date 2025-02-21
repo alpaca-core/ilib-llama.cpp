@@ -3,9 +3,7 @@
 //
 
 #include <ac/local/Lib.hpp>
-
-#include <ac/frameio/local/LocalIoRunner.hpp>
-
+#include <ac/local/IoCtx.hpp>
 #include <ac/schema/BlockingIoHelper.hpp>
 #include <ac/schema/FrameHelpers.hpp>
 #include <ac/schema/LlamaCpp.hpp>
@@ -26,8 +24,10 @@ int main() try {
 
     ac::local::Lib::loadPlugin(ACLP_llama_PLUGIN_FILE);
 
-    ac::frameio::LocalIoRunner io;
-    ac::schema::BlockingIoHelper llama(io.connectBlocking(ac::local::Lib::createSessionHandler("llama.cpp")));
+    ac::frameio::BlockingIoCtx blockingCtx;
+    ac::local::IoCtx io;
+    auto& llamaProvider = ac::local::Lib::getProvider("llama.cpp");
+    ac::schema::BlockingIoHelper llama(io.connect(llamaProvider), blockingCtx);
 
     llama.expectState<schema::StateInitial>();
 
