@@ -236,8 +236,6 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
             s.setInitialPrompt(promptTokens);
 
-            std::cout <<"Running model with prompt: " << prompt << std::endl;
-
             auto& model = m_instance.model();
             ac::llama::AntipromptManager antiprompt;
 
@@ -262,7 +260,6 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
                 result += tokenStr;
             }
 
-            s.getProbs(10);
             m_instance.stopSession();
 
             return ret;
@@ -442,8 +439,6 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep) {
             auto gguf = params.ggufPath.valueOr("");
             auto loras = params.loraPaths.valueOr({});
             auto lparams = ModelParams_fromSchema(params);
-
-            std::cout << "Loading model from " << gguf << std::endl;
 
             model = std::make_unique<llama::Model>(
                 llama::ModelRegistry::getInstance().loadModel(gguf.c_str(), {}, lparams),

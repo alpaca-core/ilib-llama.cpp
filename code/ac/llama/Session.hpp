@@ -28,7 +28,7 @@ public:
     Session(Instance& instance, llama_context* ctx, InitParams params);
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
-    ~Session() = default;
+    ~Session();
 
     // initial functions to prepare the session
     void setInitialPrompt(std::span<const Token> prompt);
