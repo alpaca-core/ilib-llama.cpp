@@ -249,7 +249,6 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
                 auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
                 if (!matchedAntiPrompt.empty()) {
                     break;
-                    break;
                 }
 
                 result += tokenStr;
