@@ -101,6 +101,8 @@ public:
     // idx is optional for sampling from the logits of the ith token
     Token sample(llama_context* lctx, int idx = -1, bool grammarFirst = false);
 
+    TokenDataVector extractTokenData(llama_context* lctx);
+
     // accept token as sampled
     // if acceptGrammar is true, the token is accepted both by the sampling chain and the grammar
     void accept(Token id, bool acceptGrammar);

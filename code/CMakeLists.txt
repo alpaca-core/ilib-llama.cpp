@@ -39,4 +39,6 @@ target_sources(ac-llama PRIVATE
     ac/llama/ControlVector.cpp
     ac/llama/LoraAdapter.hpp
     ac/llama/LoraAdapter.cpp
+    ac/llama/LogitComparer.hpp
+    ac/llama/LogitComparer.cpp
 )

@@ -8,6 +8,7 @@
 #include <ac/llama/Model.hpp>
 #include <ac/llama/AntipromptManager.hpp>
 #include <ac/llama/ControlVector.hpp>
+#include <ac/llama/LogitComparer.hpp>
 
 #include <ac/local/Provider.hpp>
 #include <ac/local/ProviderSessionContext.hpp>
@@ -211,6 +212,11 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
         llama::Instance& m_instance;
         std::optional<ChatSession> m_chatSession;
 
+        enum class State {
+            Running,
+            End
+        } state = State::Running;
+
         Runner(llama::Instance& instance)
             : m_instance(instance)
         {
@@ -259,8 +265,73 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             return ret;
         }
 
+        Schema::OpGetTokenData::Return on(Schema::OpGetTokenData, Schema::OpGetTokenData::Params&&) {
+            if (m_chatSession) {
+                throw_ex{} << "llama: chat already started";
+            }
+
+            auto& s = m_instance.startSession({});
+
+            constexpr int32_t topKElements = 10;
+            auto tokenData = s.getSampledTokenData(topKElements);
+
+            std::vector<int32_t> tokens(tokenData.size());
+            std::vector<float> logits(tokenData.size());
+            std::vector<float> probs(tokenData.size());
+            for (size_t i = 0; i < tokenData.size(); i++) {
+                tokens[i] = tokenData[i].token;
+                logits[i] = tokenData[i].logit;
+                probs[i] = tokenData[i].prob;
+            }
+
+            m_instance.stopSession();
+
+            return {
+                .tokens = std::move(tokens),
+                .logits = std::move(logits),
+                .probs = std::move(probs)
+            };
+        }
+
+        Schema::OpCompareTokenData::Return on(Schema::OpCompareTokenData, Schema::OpCompareTokenData::Params&& params) {
+            assert(params.logits1.value().size() == params.tokens1.value().size() &&
+                params.logits1.value().size()== params.probs1.value().size());
+
+            assert(params.logits2.value().size() == params.tokens2.value().size() &&
+                params.logits2.value().size()== params.probs2.value().size());
+
+            ac::llama::TokenDataVector data1;
+            data1.resize(params.tokens1.value().size());
+            for (size_t i = 0; i < params.tokens1.value().size(); i++) {
+                data1[i] = ac::llama::TokenData{
+                    .token = params.tokens1.value()[i],
+                    .logit = params.logits1.value()[i],
+                    .prob = params.probs1.value()[i]
+                };
+            }
+
+            ac::llama::TokenDataVector data2;
+            data2.resize(params.tokens2.value().size());
+            for (size_t i = 0; i < params.tokens2.value().size(); i++) {
+                data2[i] = ac::llama::TokenData{
+                    .token = params.tokens2.value()[i],
+                    .logit = params.logits2.value()[i],
+                    .prob = params.probs2.value()[i]
+                };
+            }
+
+            return {
+                .equal = ac::llama::LogitComparer::compare(data1, data2)
+            };
+        }
+
         Schema::OpChatBegin::Return on(Schema::OpChatBegin, Schema::OpChatBegin::Params&& params) {
             m_chatSession.emplace(m_instance, params);
+            return {};
+        }
+
+        Schema::OpStopInstance::Return on(Schema::OpStopInstance, Schema::OpStopInstance::Params&&) {
+            state = State::End;
             return {};
         }
     };
@@ -278,6 +349,10 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
 
             co_await io.push(Frame_stateChange(Schema::id));
         }
+
+        if (runner.state == Runner::State::End) {
+            co_return;
+        }
     }
 }
 
@@ -294,21 +369,32 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> mod
         llama::Model& lmodel;
         std::unique_ptr<llama::Instance> instance;
 
-        static llama::Instance::InitParams InstanceParams_fromSchema(sc::StateModelLoaded::OpStartInstance::Params) {
+        static llama::Instance::InitParams InstanceParams_fromSchema(Schema::OpStartInstance::Params& params) {
             llama::Instance::InitParams ret;
+            if (params.batchSize.hasValue()) {
+                ret.batchSize = params.batchSize.valueOr(2048);
+            }
+            if (params.ctxSize.hasValue()) {
+                ret.ctxSize = params.ctxSize.valueOr(1024);
+            }
+            if (params.ubatchSize.hasValue()) {
+                ret.ubatchSize = params.ubatchSize.valueOr(512);
+            }
             return ret;
         }
 
-        Schema::OpStartInstance::Return on(Schema::OpStartInstance, Schema::OpStartInstance::Params params) {
-            auto ctrlVectors = params.ctrlVectorPaths.valueOr({});
-            std::vector<llama::ControlVector::LoadInfo> ctrlloadInfo;
-            for (auto& path: ctrlVectors) {
-                ctrlloadInfo.push_back({path, 2});
-            }
+        Schema::OpStartInstance::Return on(Schema::OpStartInstance, Schema::OpStartInstance::Params iParams) {
+            instance = std::make_unique<llama::Instance>(lmodel, InstanceParams_fromSchema(iParams));
 
-            ac::llama::ControlVector ctrl(lmodel, ctrlloadInfo);
-            instance = std::make_unique<llama::Instance>(lmodel, InstanceParams_fromSchema(params));
-            instance->addControlVector(ctrl);
+            auto ctrlVectors = iParams.ctrlVectorPaths.valueOr({});
+            if (ctrlVectors.size()) {
+                std::vector<llama::ControlVector::LoadInfo> ctrlloadInfo;
+                for (auto& path : ctrlVectors) {
+                    ctrlloadInfo.push_back({ path, 2 });
+                }
+                ac::llama::ControlVector ctrl(lmodel, ctrlloadInfo);
+                instance->addControlVector(ctrl);
+            }
 
             return {};
         }
@@ -323,6 +409,8 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> mod
         co_await io.push(runner.dispatch(*f));
         if (runner.instance) {
             co_await Llama_runInstance(io, std::move(runner.instance));
+
+            runner.instance.reset();
         }
     }
 }

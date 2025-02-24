@@ -38,6 +38,10 @@ Session::Session(Instance& instance, llama_context* ctx, InitParams params)
     m_state.maxTokens = ctxLen - 4; // (#16)
 }
 
+Session::~Session() {
+    flushPendingState();
+}
+
 void Session::setInitialPrompt(std::span<const Token> initialPrompt) {
     if (m_state.m_phase != State::Phase::Initial) {
         throw_ex{} << "Session already started";
@@ -124,6 +128,24 @@ Token Session::getToken() {
     }
 
     return m_state.m_currToken;
+}
+
+TokenDataVector Session::getSampledTokenData(int32_t topK, float topP) {
+    flushPendingState();
+
+    Sampler::Params sParams = {
+        .topK = topK,
+        .topP = topP,
+        .samplerSequence = {
+            Sampler::SamplingType::Top_K,
+            Sampler::SamplingType::Top_P,
+        }
+    };
+    Sampler sampler(const_cast<Model&>(m_instance.model()), sParams);
+
+    auto logits = sampler.extractTokenData(m_ctx);
+
+    return logits;
 }
 
 std::vector<uint8_t> Session::getState() {

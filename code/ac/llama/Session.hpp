@@ -28,7 +28,7 @@ public:
     Session(Instance& instance, llama_context* ctx, InitParams params);
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
-    ~Session() = default;
+    ~Session();
 
     // initial functions to prepare the session
     void setInitialPrompt(std::span<const Token> prompt);
@@ -37,6 +37,7 @@ public:
     // main functions to interact with the model
     void pushPrompt(std::span<const Token> prompt);
     Token getToken();
+    TokenDataVector getSampledTokenData(int32_t topK, float topP = 0.95f);
     std::vector<uint8_t> getState();
 private:
     enum class Source {

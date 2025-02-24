@@ -1,4 +1,4 @@
-    // Copyright (c) Alpaca Core
+// Copyright (c) Alpaca Core
 // SPDX-License-Identifier: MIT
 //
 #include "Model.hpp"
@@ -9,12 +9,26 @@
 
 namespace ac::llama {
 namespace {
-llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadProgressCb& loadProgressCb)
-{
+llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadProgressCb& loadProgressCb) {
+    static ggml_backend_dev_t devicesCpu[] = {
+        ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU),
+         nullptr
+    };
+
+    static ggml_backend_dev_t devicesGpu[] = {
+        ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_GPU),
+         nullptr
+    };
+
     llama_model_params llamaParams = llama_model_default_params();
+
     if (params.gpu) {
-        llamaParams.n_gpu_layers = 10000;
+        llamaParams.devices = devicesGpu;
+    } else {
+        llamaParams.devices = devicesCpu;
     }
+
+    llamaParams.n_gpu_layers = params.gpu ? 10000 : 0;
     llamaParams.vocab_only = params.vocabOnly;
 #ifndef NDEBUG
     llamaParams.check_tensors = true;
@@ -74,21 +88,26 @@ std::shared_ptr<llama_model> ModelRegistry::loadModel(
     ModelLoadProgressCb pcb,
     Model::Params params) {
 
-    // clean up expired models
-    m_models.erase(std::find_if(m_models.begin(), m_models.end(), [&](const auto& m) {
-        return m.second.expired();
-    }), m_models.end());
-
+    // First check if the model is already loaded
     std::shared_ptr<llama_model> model = nullptr;
     auto key = ModelKey{gguf, params};
     for (auto& m: m_models) {
         if (m.first == key) {
-            return m.second.lock();
+            return m.second;
         }
     }
 
+    // Then clean up expired models
+    // If their ref count is 1, it means that the only reference is the one in the registry
+    m_models.erase(std::find_if(m_models.begin(), m_models.end(), [&](const auto& m) {
+        return m.second.use_count() == 1;
+    }), m_models.end());
+
     if (!model) {
         model = std::shared_ptr<llama_model>(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free);
+        if (model == nullptr) {
+            throw std::runtime_error("Failed to load model");
+        }
         m_models.push_back({key, model});
     }
 
