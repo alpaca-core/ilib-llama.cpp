@@ -37,7 +37,7 @@ init_ac_plugin_option(LLAMA)
 #######################################
 # packages
 
-add_ac_local(0.1.15)
+add_ac_local(0.1.16)
 
 #######################################
 # submodule and config
