@@ -172,7 +172,7 @@ Token Sampler::sample(llama_context* lctx, int idx, bool grammarFirst) {
     return cur.data[cur.selected].id;
 }
 
-TokenDataVector Sampler::extractProbs(llama_context* lctx) {
+TokenDataVector Sampler::extractTokenData(llama_context* lctx) {
    auto chain = m_samplerChain.get();
 
     auto cur = fillLogits(m_cur, lctx, -1);

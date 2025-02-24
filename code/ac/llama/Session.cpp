@@ -130,7 +130,7 @@ Token Session::getToken() {
     return m_state.m_currToken;
 }
 
-TokenDataVector Session::getProbs(int32_t topK, float topP) {
+TokenDataVector Session::getSampledTokenData(int32_t topK, float topP) {
     flushPendingState();
 
     Sampler::Params sParams = {
@@ -143,7 +143,7 @@ TokenDataVector Session::getProbs(int32_t topK, float topP) {
     };
     Sampler sampler(const_cast<Model&>(m_instance.model()), sParams);
 
-    auto logits = sampler.extractProbs(m_ctx);
+    auto logits = sampler.extractTokenData(m_ctx);
 
     return logits;
 }

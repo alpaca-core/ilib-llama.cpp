@@ -271,15 +271,13 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             }
 
             auto& s = m_instance.startSession({});
-            auto tokenData = s.getProbs(10);
 
-            std::vector<int32_t> tokens;
-            std::vector<float> logits;
-            std::vector<float> probs;
+            constexpr int32_t topKElements = 10;
+            auto tokenData = s.getSampledTokenData(topKElements);
 
-            tokens.resize(tokenData.size());
-            logits.resize(tokenData.size());
-            probs.resize(tokenData.size());
+            std::vector<int32_t> tokens(tokenData.size());
+            std::vector<float> logits(tokenData.size());
+            std::vector<float> probs(tokenData.size());
             for (size_t i = 0; i < tokenData.size(); i++) {
                 tokens[i] = tokenData[i].token;
                 logits[i] = tokenData[i].logit;
