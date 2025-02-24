@@ -74,7 +74,29 @@ struct StateModelLoaded {
         using Return = nullptr_t;
     };
 
-    using Ops = std::tuple<OpStartInstance>;
+    struct OpStartEmbeddingInstance {
+        static constexpr auto id = "start-embedding-instance";
+        static constexpr auto desc = "Start a new embedding instance of the llama.cpp model";
+
+        struct Params {
+            Field<std::string> instanceType = Default("general");
+            Field<uint32_t> ctxSize = Default(0);
+            Field<uint32_t> batchSize = Default(2048);
+            Field<uint32_t> ubatchSize = Default(512);
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(instanceType, "instance_type", "Type of the instance to start");
+                v(ctxSize, "ctx_size", "Size of the context");
+                v(batchSize, "batch_size", "Size of the single batch");
+                v(ubatchSize, "ubatch_size", "Size of the context");
+            }
+        };
+
+        using Return = nullptr_t;
+    };
+
+    using Ops = std::tuple<OpStartInstance, OpStartEmbeddingInstance>;
     using Ins = std::tuple<>;
     using Outs = std::tuple<>;
 };

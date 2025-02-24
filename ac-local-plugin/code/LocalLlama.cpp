@@ -195,8 +195,7 @@ xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
     co_await io.push(Frame_stateChange(Schema::id));
 
     Runner runner(chat);
-    while (true)
-    {
+    while (true) {
         auto f = co_await io.poll();
         co_await io.push(runner.dispatch(*f));
         if (runner.state == Runner::State::End) {
@@ -339,8 +338,7 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
     co_await io.push(Frame_stateChange(Schema::id));
 
     Runner runner(*instance);
-    while (true)
-    {
+    while (true) {
         auto f = co_await io.poll();
         co_await io.push(runner.dispatch(*f));
         if (runner.m_chatSession) {
@@ -356,6 +354,55 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
     }
 }
 
+xec::coro<void> Llama_runInstanceEmbedding(IoEndpoint& io, std::unique_ptr<llama::InstanceEmbedding> instance) {
+    using Schema = sc::StateEmbeddingInstance;
+
+    struct Runner : public BasicRunner {
+        llama::InstanceEmbedding& m_instance;
+
+        Runner(llama::InstanceEmbedding& instance)
+            : m_instance(instance)
+        {
+            schema::registerHandlers<Schema::Ops>(m_dispatcherData, *this);
+        }
+
+        Schema::OpRun::Return on(Schema::OpRun, Schema::OpRun::Params&& params) {
+            auto& prompt = params.prompt.value();
+
+            auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
+            auto embVec = m_instance.getEmbeddingVector(promptTokens);
+
+            return {
+                .result = std::move(embVec)
+            };
+        }
+    };
+
+    co_await io.push(Frame_stateChange(Schema::id));
+
+    Runner runner(*instance);
+    while (true) {
+        auto f = co_await io.poll();
+        co_await io.push(runner.dispatch(*f));
+    }
+}
+
+
+template <typename Params, typename ReturnParams>
+static ReturnParams Params_fromSchema(Params& params) {
+    ReturnParams ret;
+    if (params.batchSize.hasValue()) {
+        ret.batchSize = params.batchSize.valueOr(2048);
+    }
+    if (params.ctxSize.hasValue()) {
+        ret.ctxSize = params.ctxSize.valueOr(1024);
+    }
+    if (params.ubatchSize.hasValue()) {
+        ret.ubatchSize = params.ubatchSize.valueOr(512);
+    }
+    return ret;
+}
+
 xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> model) {
     using Schema = sc::StateModelLoaded;
 
@@ -368,23 +415,10 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> mod
 
         llama::Model& lmodel;
         std::unique_ptr<llama::Instance> instance;
-
-        static llama::Instance::InitParams InstanceParams_fromSchema(Schema::OpStartInstance::Params& params) {
-            llama::Instance::InitParams ret;
-            if (params.batchSize.hasValue()) {
-                ret.batchSize = params.batchSize.valueOr(2048);
-            }
-            if (params.ctxSize.hasValue()) {
-                ret.ctxSize = params.ctxSize.valueOr(1024);
-            }
-            if (params.ubatchSize.hasValue()) {
-                ret.ubatchSize = params.ubatchSize.valueOr(512);
-            }
-            return ret;
-        }
+        std::unique_ptr<llama::InstanceEmbedding> embeddingInstance;
 
         Schema::OpStartInstance::Return on(Schema::OpStartInstance, Schema::OpStartInstance::Params iParams) {
-            instance = std::make_unique<llama::Instance>(lmodel, InstanceParams_fromSchema(iParams));
+            instance = std::make_unique<llama::Instance>(lmodel, Params_fromSchema<Schema::OpStartInstance::Params, llama::Instance::InitParams>(iParams));
 
             auto ctrlVectors = iParams.ctrlVectorPaths.valueOr({});
             if (ctrlVectors.size()) {
@@ -398,19 +432,30 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> mod
 
             return {};
         }
+
+        Schema::OpStartEmbeddingInstance::Return on(Schema::OpStartEmbeddingInstance, Schema::OpStartEmbeddingInstance::Params iParams) {
+            embeddingInstance = std::make_unique<llama::InstanceEmbedding>(lmodel, Params_fromSchema<Schema::OpStartEmbeddingInstance::Params, llama::InstanceEmbedding::InitParams>(iParams));
+
+            return {};
+        }
     };
 
     co_await io.push(Frame_stateChange(Schema::id));
 
     Runner runner(*model);
-    while (true)
-    {
+    while (true) {
         auto f = co_await io.poll();
         co_await io.push(runner.dispatch(*f));
         if (runner.instance) {
             co_await Llama_runInstance(io, std::move(runner.instance));
 
             runner.instance.reset();
+        }
+
+        if (runner.embeddingInstance) {
+            co_await Llama_runInstanceEmbedding(io, std::move(runner.embeddingInstance));
+
+            runner.embeddingInstance.reset();
         }
     }
 }
@@ -460,8 +505,7 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep) {
 
         Runner runner;
 
-        while (true)
-        {
+        while (true) {
             auto f = co_await io.poll();
             co_await io.push(runner.dispatch(*f));
             if (runner.model) {
