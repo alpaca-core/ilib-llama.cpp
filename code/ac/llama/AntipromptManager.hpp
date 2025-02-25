@@ -26,6 +26,9 @@ public:
 
     // clear all stored antiprompts
     void clear();
+
+    // check if there are any antiprompts that are in intermidiate state
+    bool hasRunningAntiprompts();
 private:
     std::vector<IncrementalStringFinder> m_antiprompts;
 };

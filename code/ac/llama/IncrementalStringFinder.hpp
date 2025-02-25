@@ -23,7 +23,7 @@ public:
 
     // return the string that was searched for
     const std::string& getString() const { return m_searchStr; }
-
+    uint16_t getCurrentPos() const { return m_currentPos; }
 private:
     std::string m_searchStr;
     uint16_t m_currentPos;

@@ -46,19 +46,30 @@ int main() try {
     std::vector<std::string> antiprompts;
     antiprompts.push_back("user:"); // change it to "name" to break the token generation with the default input
 
+    constexpr bool shouldStream = true;
     auto result = llama.call<schema::StateInstance::OpRun>({
         .prompt = prompt,
         .antiprompts = antiprompts,
-        .maxTokens = 20
+        .maxTokens = 20,
+        .stream = shouldStream
     });
 
     std::cout << "Prompt: " << prompt << "\n";
     for (size_t i = 0; i < antiprompts.size(); i++) {
         std::cout << "Antiprompt "<<"[" << i << "]" <<": \"" << antiprompts[i] << "\"\n";
     }
-    std::cout   << "Generation: "
-                << "<prompt>" << prompt << "</prompt> "
-                << result.result.value() << '\n';
+
+    std::cout   << "Generation: <prompt>" << prompt << "</prompt> ";
+
+    if (shouldStream) {
+        llama.runStream<schema::StateStreaming, schema::StateStreaming::StreamToken>([&](const std::string& token) {
+            std::cout << token << std::flush;
+        });
+    } else {
+        std::cout << result.result.value();
+    }
+
+    std::cout << std::endl;
 
     auto result2 = llama.call<schema::StateInstance::OpGetTokenData>({});
 

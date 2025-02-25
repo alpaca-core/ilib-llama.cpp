@@ -113,12 +113,14 @@ struct StateInstance {
             Field<std::string> prompt;
             Field<std::vector<std::string>> antiprompts = Default();
             Field<uint32_t> maxTokens = Default(0);
+            Field<bool> stream = Default(true);
 
             template <typename Visitor>
             void visitFields(Visitor& v) {
                 v(prompt, "prompt", "Prompt to complete");
                 v(antiprompts, "antiprompts", "Antiprompts to trigger stop");
                 v(maxTokens, "max_tokens", "Maximum number of tokens to generate. 0 for unlimited");
+                v(stream, "stream", "Stream the output");
             }
         };
 
@@ -215,6 +217,28 @@ struct StateInstance {
     using Ops = std::tuple<OpRun, OpGetTokenData, OpCompareTokenData, OpChatBegin, OpStopInstance>;
     using Ins = std::tuple<>;
     using Outs = std::tuple<>;
+};
+
+struct StateStreaming {
+    static constexpr auto id = "streaming";
+    static constexpr auto desc = "Streaming state";
+
+    struct OpAbort {
+        static constexpr auto id = "abort";
+        static constexpr auto desc = "Abort the streaming";
+        using Params = nullptr_t;
+        using Return = nullptr_t;
+    };
+
+    struct StreamToken {
+        static constexpr auto id = "token";
+        static constexpr auto desc = "Token stream";
+        using Type = std::string;
+    };
+
+    using Ops = std::tuple<OpAbort>;
+    using Ins = std::tuple<>;
+    using Outs = std::tuple<StreamToken>;
 };
 
 struct StateChat {
