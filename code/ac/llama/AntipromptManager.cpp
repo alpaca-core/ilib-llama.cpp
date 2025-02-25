@@ -33,4 +33,14 @@ void AntipromptManager::clear() {
     m_antiprompts.clear();
 }
 
+bool AntipromptManager::hasRunningAntiprompts() {
+    for (auto& ap : m_antiprompts) {
+        if (ap.getCurrentPos() > 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 } // namespace ac::llama

@@ -15,6 +15,7 @@
 
 #include <ac/schema/LlamaCpp.hpp>
 #include <ac/schema/OpDispatchHelpers.hpp>
+#include <ac/schema/FrameHelpers.hpp>
 
 #include <ac/FrameUtil.hpp>
 #include <ac/frameio/IoEndpoint.hpp>
@@ -209,15 +210,18 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
 
     struct Runner : public BasicRunner {
         llama::Instance& m_instance;
+        IoEndpoint& io;
         std::optional<ChatSession> m_chatSession;
+        xec::coro<std::optional<std::string>> nextCoro;
 
         enum class State {
             Running,
             End
         } state = State::Running;
 
-        Runner(llama::Instance& instance)
+        Runner(llama::Instance& instance, IoEndpoint& io)
             : m_instance(instance)
+            , io(io)
         {
             schema::registerHandlers<Schema::Ops>(m_dispatcherData, *this);
         }
@@ -227,8 +231,18 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
                 throw_ex{} << "llama: chat already started";
             }
 
+            nextCoro = runOp(params);
+            return {
+                .result = ""
+            };
+        }
+
+        xec::coro<std::optional<std::string>> runOp(Schema::OpRun::Params params) {
+            using SchemaStreaming = sc::StateStreaming;
+
             auto& prompt = params.prompt.value();
             const auto maxTokens = params.maxTokens.value();
+            const bool isStreaming = params.stream.value();
 
             auto& s = m_instance.startSession({});
 
@@ -240,6 +254,10 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
 
             for (auto& ap : params.antiprompts.value()) {
                 antiprompt.addAntiprompt(ap);
+            }
+
+            if (isStreaming) {
+                co_await io.push(Frame_stateChange(SchemaStreaming::id));
             }
 
             Schema::OpRun::Return ret;
@@ -257,11 +275,24 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
                 }
 
                 result += tokenStr;
+
+                if (isStreaming && !antiprompt.hasRunningAntiprompts()) {
+                    co_await io.push(Frame_fromStreamType(SchemaStreaming::StreamToken{}, result));
+                    result = {};
+                }
             }
 
             m_instance.stopSession();
 
-            return ret;
+            if (isStreaming) {
+                if (!result.empty()) {
+                    co_await io.push(Frame_fromStreamType(sc::StateStreaming::StreamToken{}, result));
+                    result = {};
+                }
+                co_await io.push(Frame_stateChange(Schema::id));
+            }
+
+            co_return result;
         }
 
         Schema::OpGetTokenData::Return on(Schema::OpGetTokenData, Schema::OpGetTokenData::Params&&) {
@@ -337,10 +368,18 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
 
     co_await io.push(Frame_stateChange(Schema::id));
 
-    Runner runner(*instance);
+    Runner runner(*instance, io);
     while (true) {
         auto f = co_await io.poll();
-        co_await io.push(runner.dispatch(*f));
+        auto dispatchRes = runner.dispatch(*f);
+        co_await io.push(dispatchRes);
+        if (runner.nextCoro) {
+            auto coroRes = co_await runner.nextCoro;
+            if (coroRes.has_value() && !coroRes.value().empty()) {
+                auto d = Struct_toDict(Schema::OpRun::Return{.result = coroRes.value()});
+                co_await io.push({f->op, d});
+            }
+        }
         if (runner.m_chatSession) {
             co_await Llama_beginChat(io, runner.m_chatSession.value());
             runner.m_chatSession.reset();
