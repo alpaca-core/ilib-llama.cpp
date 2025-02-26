@@ -37,7 +37,7 @@ InstanceEmbedding::InstanceEmbedding(Model& model, InitParams params)
     : m_model(model)
     , m_sampler(model, {})
     , m_params(std::move(params))
-    , m_lctx(llama_new_context_with_model(model.lmodel(), llamaFromInstanceInitParams(params)), llama_free)
+    , m_lctx(llama_init_from_model(model.lmodel(), llamaFromInstanceInitParams(params)), llama_free)
 {
     if (!m_lctx) {
         throw_ex{} << "Failed to create llama context";
@@ -114,7 +114,7 @@ std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> 
     int n_embd_count = 1; // TODO: support multiple prompts
 
         // allocate output
-    const int n_embd = llama_n_embd(model);
+    const int n_embd = llama_model_n_embd(model);
     std::vector<float> embeddings(n_embd_count * n_embd, 0);
     float* embData = embeddings.data();
 
