@@ -62,9 +62,10 @@ int main() try {
     std::cout   << "Generation: <prompt>" << prompt << "</prompt> ";
 
     if (shouldStream) {
-        llama.runStream<schema::StateStreaming, schema::StateStreaming::StreamToken>([&](const std::string& token) {
-            std::cout << token << std::flush;
-        });
+        llama.expectState<schema::StateStreaming>();
+        for(auto t : llama.runStream<schema::StateStreaming::StreamToken, schema::StateInstance>()) {
+            std::cout << t << std::flush;
+        };
     } else {
         std::cout << result.result.value();
     }
