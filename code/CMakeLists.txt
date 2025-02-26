@@ -11,34 +11,36 @@ target_link_libraries(ac-llama
     PUBLIC
         ac::astl
 )
-target_sources(ac-llama PRIVATE
-    ac/llama/export.h
-    ac/llama/Init.hpp
-    ac/llama/Init.cpp
-    ac/llama/Logging.hpp
-    ac/llama/Logging.cpp
-    ac/llama/Model.hpp
-    ac/llama/Model.cpp
-    ac/llama/ChatFormat.hpp
-    ac/llama/ChatFormat.cpp
-    ac/llama/Vocab.hpp
-    ac/llama/Vocab.cpp
-    ac/llama/Sampler.hpp
-    ac/llama/Sampler.cpp
-    ac/llama/Instance.hpp
-    ac/llama/Instance.cpp
-    ac/llama/InstanceEmbedding.hpp
-    ac/llama/InstanceEmbedding.cpp
-    ac/llama/Session.hpp
-    ac/llama/Session.cpp
-    ac/llama/AntipromptManager.hpp
-    ac/llama/AntipromptManager.cpp
-    ac/llama/IncrementalStringFinder.hpp
-    ac/llama/IncrementalStringFinder.cpp
-    ac/llama/ControlVector.hpp
-    ac/llama/ControlVector.cpp
-    ac/llama/LoraAdapter.hpp
-    ac/llama/LoraAdapter.cpp
-    ac/llama/LogitComparer.hpp
-    ac/llama/LogitComparer.cpp
+target_sources(ac-llama
+    INTERFACE FILE_SET HEADERS FILES
+        ac/llama/export.h
+        ac/llama/Init.hpp
+        ac/llama/Model.hpp
+        ac/llama/ChatFormat.hpp
+        ac/llama/Vocab.hpp
+        ac/llama/Sampler.hpp
+        ac/llama/Instance.hpp
+        ac/llama/InstanceEmbedding.hpp
+        ac/llama/Session.hpp
+        ac/llama/AntipromptManager.hpp
+        ac/llama/IncrementalStringFinder.hpp
+        ac/llama/ControlVector.hpp
+        ac/llama/LoraAdapter.hpp
+        ac/llama/LogitComparer.hpp
+    PRIVATE
+        ac/llama/Logging.hpp
+        ac/llama/Logging.cpp
+        ac/llama/Init.cpp
+        ac/llama/Model.cpp
+        ac/llama/ChatFormat.cpp
+        ac/llama/Vocab.cpp
+        ac/llama/Sampler.cpp
+        ac/llama/Instance.cpp
+        ac/llama/InstanceEmbedding.cpp
+        ac/llama/Session.cpp
+        ac/llama/AntipromptManager.cpp
+        ac/llama/IncrementalStringFinder.cpp
+        ac/llama/ControlVector.cpp
+        ac/llama/LoraAdapter.cpp
+        ac/llama/LogitComparer.cpp
 )
