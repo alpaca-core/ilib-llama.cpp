@@ -31,7 +31,7 @@ ControlVectorLoadResult loadControlVector(const ControlVector::LoadInfo& loadInf
         return result;
     }
 
-    int32_t n_tensors = gguf_get_n_tensors(ctx_gguf);
+    const auto n_tensors = gguf_get_n_tensors(ctx_gguf);
     if (n_tensors == 0) {
         LLAMA_LOG(Warning, "No direction tensors found in ", loadInfo.ggufPath);
     }
@@ -69,7 +69,7 @@ ControlVectorLoadResult loadControlVector(const ControlVector::LoadInfo& loadInf
         }
 
         if (result.nEmbd == -1) {
-            result.nEmbd = ggml_nelements(tensor);
+            result.nEmbd = int(ggml_nelements(tensor));
         } else if (ggml_nelements(tensor) != result.nEmbd) {
             LLAMA_LOG(Error, "Direction tensor in ", loadInfo.ggufPath, " does not match previous dimensions");
             result.nEmbd = -1;

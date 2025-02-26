@@ -13,9 +13,9 @@ namespace ac::llama {
 // 3. Compare the Jensen-Shannon divergence of the probabilities
 //  - If the divergence is less than the treshold, we consider them equal
 bool LogitComparer::compare(const TokenDataVector& data1, const TokenDataVector& data2) {
-    const int32_t minSize = std::min(data1.size(), data2.size());
-    float distance1 = euclidean_distance_sq(data1, minSize);
-    float distance2 = euclidean_distance_sq(data2, minSize);
+    const auto minSize = std::min(data1.size(), data2.size());
+    float distance1 = euclidean_distance_sq({data1.data(), minSize});
+    float distance2 = euclidean_distance_sq({data2.data(), minSize});
 
     float relative_threshold = 0.02f; // 2% difference allowed
     float res = std::fabs(distance1 - distance2) / std::max(distance1, distance2);
@@ -68,10 +68,10 @@ float LogitComparer::jsd(const std::unordered_map<Token, float>& probs1, const s
     return (div1 + div2) / 2.0f;
 }
 
-float LogitComparer::euclidean_distance_sq(const TokenDataVector& logits1, int32_t count) {
+float LogitComparer::euclidean_distance_sq(std::span<const TokenData> tokens) {
     float distance = 0.0f;
-    for (int32_t i = 0; i < count; ++i) {
-        distance += logits1[i].logit * logits1[i].logit;
+    for (auto& t : tokens) {
+        distance += t.logit * t.logit;
     }
 
     // To achieve total result, we need to take the square root of the sum,
