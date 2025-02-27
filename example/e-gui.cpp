@@ -202,13 +202,13 @@ int main(int, char**) try { // this signature is required by SDL
     ac::llama::initLibrary();
 
     ac::ImGuiSdlApp app;
-    app.init("ImGui SDL example", { 1280, 720 });
+    app.init("ImGui SDL example", {1280, 720});
 
     // app state
     auto models = std::to_array({
         UModel(AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"),
-        UModel(AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-f16.gguf")
-        });
+        UModel(AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-f16.gguf"),
+    });
     UModel* selectedModel = models.data();
     UModel::State::Instance* selectedInstance = nullptr;
 
