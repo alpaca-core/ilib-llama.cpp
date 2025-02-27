@@ -51,8 +51,8 @@ int main() try {
 
     ac::llama::ResourceCache cache;
     auto model = ac::llama::Model(cache.getOrCreateModel(modelGguf, modelParams, modelLoadProgressCallback), modelParams);
-    auto loraAdapter = cache.getOrCreateLora(model, loraGguf);
-    model.addLora(loraAdapter);
+    auto lora = cache.getOrCreateLora(model, loraGguf);
+    model.addLora(ac::llama::LoraAdapter(lora));
 
     // create inference instance
     ac::llama::Instance instance(model, {});

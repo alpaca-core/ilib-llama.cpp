@@ -9,14 +9,23 @@
 
 namespace ac::llama {
 
-LoraAdapter::LoraAdapter(Model& model, std::string path, float scale)
-    : m_adapter(llama_adapter_lora_init(model.lmodel(), path.c_str()), llama_adapter_lora_free)
+LoraAdapter::LoraAdapter(local::ResourceLock<LLamaLoraResource> resource, float scale)
+    : m_resource(std::move(resource))
     , m_scale(scale)
-    , m_path(std::move(path))
+{}
+
+llama_adapter_lora* LoraAdapter::adapter() const noexcept {
+    return m_resource->m_adapter.get();
+}
+
+
+LLamaLoraResource::LLamaLoraResource(Model& model, std::string path)
+    : m_adapter(llama_adapter_lora_init(model.lmodel(), path.c_str()), llama_adapter_lora_free)
 {
     if (!m_adapter) {
-        throw std::runtime_error("Failed to initialize LORA adapter from " + m_path);
+        throw std::runtime_error("Failed to create lora adapter");
     }
+
 }
 
 } // namespace ac::llama

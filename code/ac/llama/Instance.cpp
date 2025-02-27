@@ -52,8 +52,8 @@ Instance::Instance(Model& model, InitParams params)
 
     llama_clear_adapter_lora(m_lctx.get());
     for (auto & la : model.loras()) {
-        if (la->scale() != 0.0f) {
-            llama_set_adapter_lora(m_lctx.get(), la->adapter(), la->scale());
+        if (la.scale() != 0.0f) {
+            llama_set_adapter_lora(m_lctx.get(), la.adapter(), la.scale());
         }
     }
 }

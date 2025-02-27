@@ -26,7 +26,7 @@ struct LoraKey {
 class AC_LLAMA_EXPORT ResourceCache {
 public:
     local::ResourceLock<LlamaModelResource> getOrCreateModel(std::string_view gguf, Model::Params params, ModelLoadProgressCb pcb);
-    local::ResourceLock<LoraResource> getOrCreateLora(Model& model, std::string_view loraPath);
+    local::ResourceLock<LLamaLoraResource> getOrCreateLora(Model& model, std::string_view loraPath);
 
 private:
     local::ResourceManager<ModelKey> m_modelsManager;

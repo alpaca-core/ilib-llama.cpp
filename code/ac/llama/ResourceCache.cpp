@@ -13,9 +13,9 @@ local::ResourceLock<LlamaModelResource> ResourceCache::getOrCreateModel(std::str
     });
 }
 
-local::ResourceLock<LoraResource> ResourceCache::getOrCreateLora(Model& model, std::string_view loraPath) {
-    return m_lorasManager.findOrCreateResource<LoraResource>(LoraKey{model.lmodel(), loraPath.data()}, [&] {
-        return std::make_shared<LoraResource>(model, loraPath.data());
+local::ResourceLock<LLamaLoraResource> ResourceCache::getOrCreateLora(Model& model, std::string_view loraPath) {
+    return m_lorasManager.findOrCreateResource<LLamaLoraResource>(LoraKey{model.lmodel(), loraPath.data()}, [&] {
+        return std::make_shared<LLamaLoraResource>(model, loraPath.data());
     });
 }
 

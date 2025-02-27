@@ -58,14 +58,14 @@ public:
     llama_model* lmodel() noexcept;
     const llama_model* lmodel() const noexcept;
 
-    void addLora(local::ResourceLock<ac::llama::LoraResource> lora) noexcept { m_loras.push_back(lora); }
-    std::span<local::ResourceLock<ac::llama::LoraResource>> loras() noexcept { return std::span<local::ResourceLock<ac::llama::LoraResource>>(m_loras); }
+    void addLora(LoraAdapter lora) noexcept { m_loras.push_back(lora); }
+    std::span<LoraAdapter> loras() noexcept { return std::span<LoraAdapter>(m_loras); }
 
     const Vocab& vocab() const noexcept { return m_vocab; }
 private:
     const Params m_params;
     local::ResourceLock<LlamaModelResource> m_model;
-    std::vector<local::ResourceLock<ac::llama::LoraResource>> m_loras;
+    std::vector<LoraAdapter> m_loras;
 
     Vocab m_vocab{*this};
 };

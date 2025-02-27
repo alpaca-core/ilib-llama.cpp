@@ -5,6 +5,7 @@
 #include "export.h"
 
 #include <ac/local/Resource.hpp>
+#include <ac/local/ResourceLock.hpp>
 
 #include <astl/mem_ext.hpp>
 #include <string>
@@ -13,33 +14,26 @@ struct llama_adapter_lora;
 
 namespace ac::llama {
 class Model;
+struct LLamaLoraResource;
 
 class AC_LLAMA_EXPORT LoraAdapter {
 public:
-    struct Params {
-        Model& model;
-        std::string path;
-        float scale = 1.0f;
-    };
+    LoraAdapter(local::ResourceLock<LLamaLoraResource> resource, float scale = 1.0);
 
-    LoraAdapter(Model& model, std::string path, float scale = 1.0f);
-
-    llama_adapter_lora* adapter() const noexcept { return m_adapter.get(); }
+    llama_adapter_lora* adapter() const noexcept;
     float scale() const noexcept { return m_scale; }
-    const std::string& path() const noexcept { return m_path; }
 
 private:
-    astl::c_unique_ptr<llama_adapter_lora> m_adapter;
-    // TODO: remove scale from the adapter from here
-    // move it when we set it to the model
+    local::ResourceLock<LLamaLoraResource> m_resource;
     float m_scale;
-    std::string m_path;
 };
 
-struct LoraResource : public LoraAdapter, public local::Resource {
-    using LoraAdapter::LoraAdapter;
+struct LLamaLoraResource : public local::Resource {
+    LLamaLoraResource(Model& model, std::string path);
+
+    astl::c_unique_ptr<llama_adapter_lora> m_adapter;
 };
 
-using LoraResoucePtr = std::shared_ptr<LoraResource>;
+using LoraResourcePtr = std::shared_ptr<LLamaLoraResource>;
 
 } // namespace ac::llama
