@@ -3,6 +3,9 @@
 //
 #pragma once
 #include "export.h"
+
+#include <ac/local/Resource.hpp>
+
 #include <astl/mem_ext.hpp>
 #include <string>
 
@@ -13,6 +16,12 @@ class Model;
 
 class AC_LLAMA_EXPORT LoraAdapter {
 public:
+    struct Params {
+        Model& model;
+        std::string path;
+        float scale = 1.0f;
+    };
+
     LoraAdapter(Model& model, std::string path, float scale = 1.0f);
 
     llama_adapter_lora* adapter() const noexcept { return m_adapter.get(); }
@@ -21,8 +30,16 @@ public:
 
 private:
     astl::c_unique_ptr<llama_adapter_lora> m_adapter;
+    // TODO: remove scale from the adapter from here
+    // move it when we set it to the model
     float m_scale;
     std::string m_path;
 };
+
+struct LoraResource : public LoraAdapter, public local::Resource {
+    using LoraAdapter::LoraAdapter;
+};
+
+using LoraResoucePtr = std::shared_ptr<LoraResource>;
 
 } // namespace ac::llama

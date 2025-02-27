@@ -48,11 +48,10 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 } // namespace
 
 
-Model::Model(std::shared_ptr<llama_model> lmodel, Params params)
+Model::Model(std::string gguf, Params params, ModelLoadProgressCb pcb)
     : m_params(astl::move(params))
-    , m_lmodel(std::move(lmodel))
+    , m_lmodel(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free)
 {}
-
 Model::~Model() = default;
 
 
@@ -82,62 +81,5 @@ std::string Model::getChatTemplateId() const {
 
     return std::string(tplBuf.get(), len);
 }
-
-std::shared_ptr<llama_model> ModelRegistry::loadModel(
-    const std::string& gguf,
-    ModelLoadProgressCb pcb,
-    Model::Params params) {
-
-    // First check if the model is already loaded
-    std::shared_ptr<llama_model> model = nullptr;
-    auto key = ModelKey{gguf, params};
-    for (auto& m: m_models) {
-        if (m.first == key) {
-            return m.second;
-        }
-    }
-
-    // Then clean up expired models
-    // If their ref count is 1, it means that the only reference is the one in the registry
-    m_models.erase(std::find_if(m_models.begin(), m_models.end(), [&](const auto& m) {
-        return m.second.use_count() == 1;
-    }), m_models.end());
-
-    if (!model) {
-        model = std::shared_ptr<llama_model>(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free);
-        if (model == nullptr) {
-            throw std::runtime_error("Failed to load model");
-        }
-        m_models.push_back({key, model});
-    }
-
-    return model;
-}
-
-std::shared_ptr<LoraAdapter> ModelRegistry::loadLora(Model* model, const std::string& loraPath) {
-    auto loadedLorasIt = m_loras.find(model->lmodel());
-    if (loadedLorasIt == m_loras.end()) {
-        m_loras[model->lmodel()] = {};
-    }
-
-    auto loadedLoras = m_loras[model->lmodel()];
-
-    loadedLoras.erase(std::find_if(loadedLoras.begin(), loadedLoras.end(), [&](const auto& lora) {
-        return lora.expired();
-    }), loadedLoras.end());
-
-    for (auto& lora : loadedLoras) {
-        if (!lora.expired() && lora.lock()->path() == loraPath) {
-            return lora.lock();
-            break;
-        }
-    }
-
-    std::shared_ptr<LoraAdapter> lora = std::make_shared<LoraAdapter>(*model, loraPath);
-    loadedLoras.push_back(lora);
-
-    return lora;
-}
-
 
 } // namespace ac::llama

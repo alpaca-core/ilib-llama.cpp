@@ -9,6 +9,7 @@
 #include <ac/llama/AntipromptManager.hpp>
 #include <ac/llama/ControlVector.hpp>
 #include <ac/llama/LogitComparer.hpp>
+#include <ac/llama/ResourceCache.hpp>
 
 #include <ac/local/Provider.hpp>
 #include <ac/local/ProviderSessionContext.hpp>
@@ -442,7 +443,7 @@ static ReturnParams Params_fromSchema(Params& params) {
     return ret;
 }
 
-xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> model) {
+xec::coro<void> Llama_runModel(IoEndpoint& io, llama::Model& model) {
     using Schema = sc::StateModelLoaded;
 
     struct Runner : public BasicRunner {
@@ -481,7 +482,7 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> mod
 
     co_await io.push(Frame_stateChange(Schema::id));
 
-    Runner runner(*model);
+    Runner runner(model);
     while (true) {
         auto f = co_await io.poll();
         co_await io.push(runner.dispatch(*f));
@@ -499,15 +500,18 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, std::unique_ptr<llama::Model> mod
     }
 }
 
-xec::coro<void> Llama_runSession(StreamEndpoint ep) {
+xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resourceCache) {
     using Schema = sc::StateInitial;
 
     struct Runner : public BasicRunner {
-        Runner() {
+        Runner(llama::ResourceCache& resourceCache)
+            : cache(resourceCache)
+        {
             schema::registerHandlers<Schema::Ops>(m_dispatcherData, *this);
         }
 
-        std::unique_ptr<llama::Model> model;
+        llama::ResourceCache& cache;
+        local::ResourceLock<llama::ModelResource> model;
 
         static llama::Model::Params ModelParams_fromSchema(sc::StateInitial::OpLoadModel::Params schemaParams) {
             llama::Model::Params ret;
@@ -522,13 +526,10 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep) {
             auto loras = params.loraPaths.valueOr({});
             auto lparams = ModelParams_fromSchema(params);
 
-            model = std::make_unique<llama::Model>(
-                llama::ModelRegistry::getInstance().loadModel(gguf.c_str(), {}, lparams),
-                astl::move(lparams)
-            );
+            model = cache.getOrCreateModel(gguf, lparams, {});
 
             for(auto& loraPath: loras) {
-                auto lora = llama::ModelRegistry::getInstance().loadLora(model.get(), loraPath);
+                auto lora = cache.getOrCreateLora(*model, loraPath);
                 model->addLora(lora);
             }
 
@@ -542,13 +543,13 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep) {
 
         co_await io.push(Frame_stateChange(Schema::id));
 
-        Runner runner;
+        Runner runner(resourceCache);
 
         while (true) {
             auto f = co_await io.poll();
             co_await io.push(runner.dispatch(*f));
             if (runner.model) {
-                co_await Llama_runModel(io, std::move(runner.model));
+                co_await Llama_runModel(io, *runner.model);
             }
         }
     }
@@ -567,8 +568,10 @@ public:
         return i;
     }
 
+    llama::ResourceCache m_resourceCache;
+
     virtual void createSession(ProviderSessionContext ctx) override {
-        co_spawn(ctx.executor.cpu, Llama_runSession(std::move(ctx.endpoint.session)));
+        co_spawn(ctx.executor.cpu, Llama_runSession(std::move(ctx.endpoint.session), m_resourceCache));
     }
 };
 } // namespace

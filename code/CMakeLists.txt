@@ -10,6 +10,7 @@ target_link_libraries(ac-llama
         ac::jalog
     PUBLIC
         ac::astl
+        ac::local
 )
 target_sources(ac-llama
     INTERFACE FILE_SET HEADERS FILES
@@ -27,6 +28,7 @@ target_sources(ac-llama
         ac/llama/ControlVector.hpp
         ac/llama/LoraAdapter.hpp
         ac/llama/LogitComparer.hpp
+        ac/llama/ResourceCache.hpp
     PRIVATE
         ac/llama/Logging.hpp
         ac/llama/Logging.cpp
@@ -43,4 +45,5 @@ target_sources(ac-llama
         ac/llama/ControlVector.cpp
         ac/llama/LoraAdapter.cpp
         ac/llama/LogitComparer.cpp
+        ac/llama/ResourceCache.cpp
 )

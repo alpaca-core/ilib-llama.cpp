@@ -8,6 +8,7 @@
 #include <ac/llama/Init.hpp>
 #include <ac/llama/Model.hpp>
 #include <ac/llama/InstanceEmbedding.hpp>
+#include <ac/llama/ResourceCache.hpp>
 
 // logging
 #include <ac/jalog/Instance.hpp>
@@ -42,14 +43,15 @@ int main() try {
         }
         return true;
     };
-    auto lmodel = ac::llama::ModelRegistry::getInstance().loadModel(modelGguf, modelLoadProgressCallback, modelParams);
-    ac::llama::Model model(lmodel, modelParams);
+
+    ac::llama::ResourceCache cache;
+    auto model = cache.getOrCreateModel(modelGguf, modelParams, modelLoadProgressCallback);
 
     // create inference instance
-    ac::llama::InstanceEmbedding instance(model, {});
+    ac::llama::InstanceEmbedding instance(*model, {});
 
     std::string prompt = "The main character in the story loved to eat pineapples.";
-    std::vector<ac::llama::Token> tokens = model.vocab().tokenize(prompt, true, true);
+    std::vector<ac::llama::Token> tokens = model->vocab().tokenize(prompt, true, true);
 
     auto embeddings = instance.getEmbeddingVector(tokens);
 

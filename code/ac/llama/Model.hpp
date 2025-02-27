@@ -4,8 +4,15 @@
 #pragma once
 #include "export.h"
 #include "Vocab.hpp"
+
+#include "LoraAdapter.hpp"
+
+#include <ac/local/Resource.hpp>
+#include <ac/local/ResourceLock.hpp>
+
 #include <astl/mem_ext.hpp>
 #include <astl/ufunction.hpp>
+
 #include <algorithm>
 #include <string>
 #include <span>
@@ -33,7 +40,7 @@ public:
         }
     };
 
-    Model(std::shared_ptr<llama_model> model, Params params);
+    Model(std::string gguf, Params params, ModelLoadProgressCb pcb);
     ~Model();
 
     const Params& params() const noexcept { return m_params; }
@@ -49,48 +56,30 @@ public:
     llama_model* lmodel() noexcept { return m_lmodel.get(); }
     const llama_model* lmodel() const noexcept { return m_lmodel.get(); }
 
-    void addLora(std::shared_ptr<LoraAdapter> lora) noexcept { m_loras.push_back(lora); }
-    void removeLora(std::shared_ptr<LoraAdapter> lora) noexcept {
-        m_loras.erase(std::remove(m_loras.begin(), m_loras.end(), lora), m_loras.end());
-    }
-    std::span<std::shared_ptr<LoraAdapter>> loras() noexcept { return std::span<std::shared_ptr<LoraAdapter>>(m_loras); }
+    void addLora(local::ResourceLock<ac::llama::LoraResource> lora) noexcept { m_loras.push_back(lora); }
+    // void removeLora(local::ResourceLock<ac::llama::LoraResource> lora) noexcept {
+    //     m_loras.erase(std::remove(m_loras.begin(), m_loras.end(), lora), m_loras.end());
+    // }
+    std::span<local::ResourceLock<ac::llama::LoraResource>> loras() noexcept { return std::span<local::ResourceLock<ac::llama::LoraResource>>(m_loras); }
+    // void addLora(std::shared_ptr<LoraAdapter> lora) noexcept { m_loras.push_back(lora); }
+    // void removeLora(std::shared_ptr<LoraAdapter> lora) noexcept {
+    //     m_loras.erase(std::remove(m_loras.begin(), m_loras.end(), lora), m_loras.end());
+    // }
+    // std::span<std::shared_ptr<LoraAdapter>> loras() noexcept { return std::span<std::shared_ptr<LoraAdapter>>(m_loras); }
 
     const Vocab& vocab() const noexcept { return m_vocab; }
 private:
     const Params m_params;
     std::shared_ptr<llama_model> m_lmodel;
-    std::vector<std::shared_ptr<LoraAdapter>> m_loras;
+    std::vector<local::ResourceLock<ac::llama::LoraResource>> m_loras;
 
     Vocab m_vocab{*this};
 };
 
-class AC_LLAMA_EXPORT ModelRegistry {
-public:
-    static ModelRegistry& getInstance() {
-        static ModelRegistry instance;
-        return instance;
-    };
-
-    std::shared_ptr<llama_model> loadModel(
-        const std::string& gguf,
-        ModelLoadProgressCb pcb,
-        Model::Params params);
-
-    std::shared_ptr<LoraAdapter> loadLora(Model* model, const std::string& loraPath);
-private:
-
-    struct ModelKey {
-        std::string gguf;
-        Model::Params params;
-
-        bool operator==(const ModelKey& other) const noexcept {
-            return gguf == other.gguf
-                    && params == other.params;
-        }
-    };
-
-    std::vector<std::pair<ModelKey, std::shared_ptr<llama_model>>> m_models;
-    std::unordered_map<llama_model*, std::vector<std::weak_ptr<LoraAdapter>>> m_loras;
+struct ModelResource : public Model, public local::Resource {
+    using Model::Model;
 };
+
+using ModelResoucePtr = std::shared_ptr<ModelResource>;
 
 } // namespace ac::llama

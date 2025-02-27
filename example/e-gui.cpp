@@ -6,6 +6,7 @@
 #include <ac/llama/Instance.hpp>
 #include <ac/llama/Session.hpp>
 #include <ac/llama/AntipromptManager.hpp>
+#include <ac/llama/ResourceCache.hpp>
 
 #include <ImGuiSdlApp.hpp>
 #include <imgui_stdlib.h>
@@ -48,6 +49,8 @@ void printModelLoadProgress(float progress) {
     }
 };
 
+ac::llama::ResourceCache g_resourceCache;
+
 // unloadable model
 class UModel {
 public:
@@ -61,7 +64,7 @@ public:
     class State {
     public:
         State(const std::string& ggufPath, const ac::llama::Model::Params& modelParams)
-            : m_model(ac::llama::ModelRegistry::getInstance().loadModel(ggufPath.c_str(), printModelLoadProgress, modelParams), modelParams)
+            : m_model(g_resourceCache.getOrCreateModel(ggufPath, modelParams, printModelLoadProgress))
         {}
 
         class Instance {
@@ -70,7 +73,6 @@ public:
                 : m_name(std::move(name))
                 , m_instance(model, params)
             {}
-
 
             class Session {
             public:
@@ -157,7 +159,7 @@ public:
 
         Instance* newInstance(const ac::llama::Instance::InitParams& params) {
             auto name = std::to_string(m_nextInstanceId++);
-            m_instances.emplace_back(new Instance(name, m_model, params));
+            m_instances.emplace_back(new Instance(name, *m_model, params));
             return m_instances.back().get();
         }
 
@@ -170,7 +172,7 @@ public:
 
         const std::vector<std::unique_ptr<Instance>>& instances() const { return m_instances; }
     private:
-        ac::llama::Model m_model;
+        ac::local::ResourceLock<ac::llama::ModelResource> m_model;
 
         int m_nextInstanceId = 0;
         std::vector<std::unique_ptr<Instance>> m_instances;
