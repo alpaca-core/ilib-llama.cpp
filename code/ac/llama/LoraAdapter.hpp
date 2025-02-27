@@ -34,6 +34,4 @@ struct LLamaLoraResource : public local::Resource {
     astl::c_unique_ptr<llama_adapter_lora> m_adapter;
 };
 
-using LoraResourcePtr = std::shared_ptr<LLamaLoraResource>;
-
 } // namespace ac::llama

@@ -76,6 +76,4 @@ struct LlamaModelResource : public local::Resource {
     astl::c_unique_ptr<llama_model> m_model;
 };
 
-using LlamaModelResourcePtr = std::shared_ptr<LlamaModelResource>;
-
 } // namespace ac::llama
