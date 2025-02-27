@@ -7,22 +7,22 @@
 
 namespace ac::llama {
 
-local::ResourceLock<ModelResource> ResourceCache::getOrCreateModel(std::string_view gguf, Model::Params params, ModelLoadProgressCb pcb) {
-    local::ResourceLock<ModelResource> modelResult;
+local::ResourceLock<LlamaModelResource> ResourceCache::getOrCreateModel(std::string_view gguf, Model::Params params, ModelLoadProgressCb pcb) {
+    local::ResourceLock<LlamaModelResource> modelResult;
     {
         std::lock_guard l(m_modelsMutex);
-        modelResult = m_modelsManager.findResource<ModelResource>(ModelKey{gguf.data(), params});
+        modelResult = m_modelsManager.findResource<LlamaModelResource>(ModelKey{gguf.data(), params});
 
         if (modelResult) {
             return modelResult;
         }
     }
 
-    ModelResoucePtr modelPtr = std::make_shared<ModelResource>(gguf.data(), params, std::move(pcb));
+    LlamaModelResourcePtr modelPtr = std::make_shared<LlamaModelResource>(gguf.data(), params, std::move(pcb));
 
     {
         std::lock_guard l(m_modelsMutex);
-        auto check = m_modelsManager.findResource<ModelResource>(ModelKey{gguf.data(), params});
+        auto check = m_modelsManager.findResource<LlamaModelResource>(ModelKey{gguf.data(), params});
         if (!check) {
             modelResult = m_modelsManager.addResource(ModelKey{gguf.data(), params}, std::move(modelPtr));
         }

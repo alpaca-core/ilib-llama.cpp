@@ -48,15 +48,22 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 } // namespace
 
 
-Model::Model(std::string gguf, Params params, ModelLoadProgressCb pcb)
-    : m_params(astl::move(params))
-    , m_lmodel(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free)
+Model::Model(std::string , Params , ModelLoadProgressCb )
+    // : m_params(astl::move(params))
+    // , m_lmodel(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free)
 {}
+
+Model::Model(local::ResourceLock<LlamaModelResource> model, Params params)
+    : m_params(params)
+    , m_model(astl::move(model))
+{}
+
 Model::~Model() = default;
 
 
 uint32_t Model::trainCtxLength() const noexcept {
-    return uint32_t(llama_model_n_ctx_train(m_lmodel.get()));
+    // return uint32_t(llama_model_n_ctx_train(m_lmodel.get()));
+    return uint32_t(llama_model_n_ctx_train(m_model->m_model.get()));
 }
 
 bool Model::shouldAddBosToken() const noexcept {
@@ -64,7 +71,7 @@ bool Model::shouldAddBosToken() const noexcept {
 }
 
 bool Model::hasEncoder() const noexcept {
-    return llama_model_has_encoder(m_lmodel.get());
+    return llama_model_has_encoder(m_model->m_model.get());
 }
 
 std::string Model::getChatTemplateId() const {
@@ -74,12 +81,19 @@ std::string Model::getChatTemplateId() const {
 
     const char* key = "tokenizer.chat_template";
 
-    int32_t len = llama_model_meta_val_str(m_lmodel.get(), key, tplBuf.get(), bufSize);
+    int32_t len = llama_model_meta_val_str(m_model->m_model.get(), key, tplBuf.get(), bufSize);
     if (len < 0) {
         return "chatml"; // default fallback
     }
 
     return std::string(tplBuf.get(), len);
 }
+
+llama_model* Model::lmodel() noexcept { return m_model->m_model.get(); }
+const llama_model* Model::lmodel() const noexcept { return m_model->m_model.get(); }
+
+LlamaModelResource::LlamaModelResource(std::string gguf, Model::Params params, ModelLoadProgressCb pcb)
+    : m_model(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free)
+{}
 
 } // namespace ac::llama

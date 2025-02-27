@@ -5,7 +5,7 @@
 #include "Model.hpp"
 #include "LoraAdapter.hpp"
 
-#include <ac/local/ResourceManager.hpp>
+#include <ac/local/ResourceManager.hpp>\
 
 namespace ac::llama {
 
@@ -25,7 +25,7 @@ struct LoraKey {
 
 class AC_LLAMA_EXPORT ResourceCache {
 public:
-    local::ResourceLock<ModelResource> getOrCreateModel(std::string_view gguf, Model::Params params, ModelLoadProgressCb pcb);
+    local::ResourceLock<LlamaModelResource> getOrCreateModel(std::string_view gguf, Model::Params params, ModelLoadProgressCb pcb);
     local::ResourceLock<LoraResource> getOrCreateLora(Model& model, std::string_view loraPath);
 
 private:

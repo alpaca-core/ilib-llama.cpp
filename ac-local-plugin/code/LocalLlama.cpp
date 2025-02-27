@@ -511,7 +511,7 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resour
         }
 
         llama::ResourceCache& cache;
-        local::ResourceLock<llama::ModelResource> model;
+        std::unique_ptr<llama::Model> model;
 
         static llama::Model::Params ModelParams_fromSchema(sc::StateInitial::OpLoadModel::Params schemaParams) {
             llama::Model::Params ret;
@@ -526,7 +526,7 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resour
             auto loras = params.loraPaths.valueOr({});
             auto lparams = ModelParams_fromSchema(params);
 
-            model = cache.getOrCreateModel(gguf, lparams, {});
+            model.reset(new llama::Model(cache.getOrCreateModel(gguf, lparams, {}), lparams));
 
             for(auto& loraPath: loras) {
                 auto lora = cache.getOrCreateLora(*model, loraPath);

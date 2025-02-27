@@ -26,6 +26,8 @@ class LoraAdapter;
 
 using ModelLoadProgressCb = astl::ufunction<void(float)>;
 
+struct LlamaModelResource;
+
 class AC_LLAMA_EXPORT Model {
 public:
     struct Params {
@@ -41,6 +43,7 @@ public:
     };
 
     Model(std::string gguf, Params params, ModelLoadProgressCb pcb);
+    Model(local::ResourceLock<LlamaModelResource> model, Params params);
     ~Model();
 
     const Params& params() const noexcept { return m_params; }
@@ -53,33 +56,31 @@ public:
     // fallback to "chatml" if the underlying model does not provide a chat template
     std::string getChatTemplateId() const;
 
-    llama_model* lmodel() noexcept { return m_lmodel.get(); }
-    const llama_model* lmodel() const noexcept { return m_lmodel.get(); }
+    llama_model* lmodel() noexcept;
+    const llama_model* lmodel() const noexcept;
 
     void addLora(local::ResourceLock<ac::llama::LoraResource> lora) noexcept { m_loras.push_back(lora); }
     // void removeLora(local::ResourceLock<ac::llama::LoraResource> lora) noexcept {
     //     m_loras.erase(std::remove(m_loras.begin(), m_loras.end(), lora), m_loras.end());
     // }
     std::span<local::ResourceLock<ac::llama::LoraResource>> loras() noexcept { return std::span<local::ResourceLock<ac::llama::LoraResource>>(m_loras); }
-    // void addLora(std::shared_ptr<LoraAdapter> lora) noexcept { m_loras.push_back(lora); }
-    // void removeLora(std::shared_ptr<LoraAdapter> lora) noexcept {
-    //     m_loras.erase(std::remove(m_loras.begin(), m_loras.end(), lora), m_loras.end());
-    // }
-    // std::span<std::shared_ptr<LoraAdapter>> loras() noexcept { return std::span<std::shared_ptr<LoraAdapter>>(m_loras); }
 
     const Vocab& vocab() const noexcept { return m_vocab; }
 private:
     const Params m_params;
-    std::shared_ptr<llama_model> m_lmodel;
+    // std::shared_ptr<llama_model> m_lmodel;
+    local::ResourceLock<LlamaModelResource> m_model;
     std::vector<local::ResourceLock<ac::llama::LoraResource>> m_loras;
 
     Vocab m_vocab{*this};
 };
 
-struct ModelResource : public Model, public local::Resource {
-    using Model::Model;
+struct LlamaModelResource : public local::Resource {
+    LlamaModelResource(std::string gguf, Model::Params params, ModelLoadProgressCb pcb);
+
+    astl::c_unique_ptr<llama_model> m_model;
 };
 
-using ModelResoucePtr = std::shared_ptr<ModelResource>;
+using LlamaModelResourcePtr = std::shared_ptr<LlamaModelResource>;
 
 } // namespace ac::llama

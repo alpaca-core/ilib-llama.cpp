@@ -26,8 +26,7 @@ const char* Model_117m_q6_k = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
 
 TEST_CASE("vocab only") {
     ac::llama::Model::Params iParams = { .vocabOnly = true };
-    auto modelPtr = resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {});
-    auto& model = *modelPtr;
+    auto model = ac::llama::Model(resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {}), iParams);
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
@@ -46,8 +45,7 @@ TEST_CASE("vocab only") {
 
 TEST_CASE("inference") {
     ac::llama::Model::Params iParams = {};
-    auto modelPtr = resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {});
-    auto& model = *modelPtr;
+    auto model = ac::llama::Model(resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {}), iParams);
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
@@ -120,8 +118,7 @@ TEST_CASE("inference") {
 
 TEST_CASE("session") {
     ac::llama::Model::Params iParams = {};
-    auto modelPtr = resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {});
-    auto& model = *modelPtr;
+    auto model = ac::llama::Model(resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {}), iParams);
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
@@ -240,8 +237,7 @@ TEST_CASE("session") {
 
 TEST_CASE("control_vector") {
     ac::llama::Model::Params iParams = {};
-    auto modelPtr = resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {});
-    auto& model = *modelPtr;
+    auto model = ac::llama::Model(resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {}), iParams);
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
@@ -357,8 +353,7 @@ TEST_CASE("control_vector") {
 
 TEST_CASE("grammar") {
     ac::llama::Model::Params iParams = {};
-    auto modelPtr = resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {});
-    auto& model = *modelPtr;
+    auto model = ac::llama::Model(resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {}), iParams);
     CHECK(!!model.lmodel());
 
     auto& params = model.params();
@@ -447,8 +442,7 @@ letter      ::= [A-Z]
 TEST_CASE("embedding") {
     ac::llama::Model::Params iParams = {};
     const char* Model_bge_small_en = AC_TEST_DATA_LLAMA_DIR "/bge-small-en-v1.5-f16.gguf";
-    auto modelPtr = resourceCache.getOrCreateModel(Model_bge_small_en, iParams, {});
-    auto& model = *modelPtr;
+    auto model = ac::llama::Model(resourceCache.getOrCreateModel(Model_bge_small_en, iParams, {}), iParams);
     CHECK(model.trainCtxLength() == 512);
     CHECK_FALSE(model.hasEncoder());
 

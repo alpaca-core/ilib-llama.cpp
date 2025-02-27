@@ -50,12 +50,12 @@ int main() try {
     };
 
     ac::llama::ResourceCache cache;
-    auto model = cache.getOrCreateModel(modelGguf, modelParams, modelLoadProgressCallback);
-    auto loraAdapter = cache.getOrCreateLora(*model, loraGguf);
-    model->addLora(loraAdapter);
+    auto model = ac::llama::Model(cache.getOrCreateModel(modelGguf, modelParams, modelLoadProgressCallback), modelParams);
+    auto loraAdapter = cache.getOrCreateLora(model, loraGguf);
+    model.addLora(loraAdapter);
 
     // create inference instance
-    ac::llama::Instance instance(*model, {});
+    ac::llama::Instance instance(model, {});
 
     // To add control vector uncomment the following lines
     // ac::llama::ControlVector ctrlVector(model, {{ctrlVectorGguf, 2.f}});
@@ -66,7 +66,7 @@ int main() try {
 
     // start session
     auto& session = instance.startSession({});
-    session.setInitialPrompt(model->vocab().tokenize(prompt, true, true));
+    session.setInitialPrompt(model.vocab().tokenize(prompt, true, true));
 
     // generate and print 100 tokens
     for (int i = 0; i < 100; ++i) {
@@ -75,7 +75,7 @@ int main() try {
             // no more tokens
             break;
         }
-        std::cout << model->vocab().tokenToString(token);
+        std::cout << model.vocab().tokenToString(token);
     }
     std::cout << '\n';
 

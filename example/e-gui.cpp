@@ -64,7 +64,7 @@ public:
     class State {
     public:
         State(const std::string& ggufPath, const ac::llama::Model::Params& modelParams)
-            : m_model(g_resourceCache.getOrCreateModel(ggufPath, modelParams, printModelLoadProgress))
+            : m_model(ac::llama::Model(g_resourceCache.getOrCreateModel(ggufPath, modelParams, printModelLoadProgress), modelParams))
         {}
 
         class Instance {
@@ -159,7 +159,7 @@ public:
 
         Instance* newInstance(const ac::llama::Instance::InitParams& params) {
             auto name = std::to_string(m_nextInstanceId++);
-            m_instances.emplace_back(new Instance(name, *m_model, params));
+            m_instances.emplace_back(new Instance(name, m_model, params));
             return m_instances.back().get();
         }
 
@@ -172,7 +172,7 @@ public:
 
         const std::vector<std::unique_ptr<Instance>>& instances() const { return m_instances; }
     private:
-        ac::local::ResourceLock<ac::llama::ModelResource> m_model;
+        ac::llama::Model m_model;
 
         int m_nextInstanceId = 0;
         std::vector<std::unique_ptr<Instance>> m_instances;
