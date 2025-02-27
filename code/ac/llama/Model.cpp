@@ -47,12 +47,6 @@ llama_model_params llamaFromModelParams(const Model::Params& params, ModelLoadPr
 }
 } // namespace
 
-
-Model::Model(std::string , Params , ModelLoadProgressCb )
-    // : m_params(astl::move(params))
-    // , m_lmodel(llama_model_load_from_file(gguf.c_str(), llamaFromModelParams(params, pcb)), llama_model_free)
-{}
-
 Model::Model(local::ResourceLock<LlamaModelResource> model, Params params)
     : m_params(params)
     , m_model(astl::move(model))

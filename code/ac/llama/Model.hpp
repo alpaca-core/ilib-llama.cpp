@@ -42,7 +42,6 @@ public:
         }
     };
 
-    Model(std::string gguf, Params params, ModelLoadProgressCb pcb);
     Model(local::ResourceLock<LlamaModelResource> model, Params params);
     ~Model();
 
@@ -60,15 +59,11 @@ public:
     const llama_model* lmodel() const noexcept;
 
     void addLora(local::ResourceLock<ac::llama::LoraResource> lora) noexcept { m_loras.push_back(lora); }
-    // void removeLora(local::ResourceLock<ac::llama::LoraResource> lora) noexcept {
-    //     m_loras.erase(std::remove(m_loras.begin(), m_loras.end(), lora), m_loras.end());
-    // }
     std::span<local::ResourceLock<ac::llama::LoraResource>> loras() noexcept { return std::span<local::ResourceLock<ac::llama::LoraResource>>(m_loras); }
 
     const Vocab& vocab() const noexcept { return m_vocab; }
 private:
     const Params m_params;
-    // std::shared_ptr<llama_model> m_lmodel;
     local::ResourceLock<LlamaModelResource> m_model;
     std::vector<local::ResourceLock<ac::llama::LoraResource>> m_loras;
 
