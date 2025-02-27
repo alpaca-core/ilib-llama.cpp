@@ -138,7 +138,7 @@ public:
             auto tokenStr = m_vocab.tokenToString(t);
             response += tokenStr;
 
-            if (finder.feedText(tokenStr)) {
+            if (finder.feedText(tokenStr) >= 0) {
                 // user prefix was added by generation, so don't add it again
                 m_addUserPrefix = false;
 
