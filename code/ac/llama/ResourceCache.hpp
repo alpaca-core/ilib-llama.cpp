@@ -5,7 +5,7 @@
 #include "Model.hpp"
 #include "LoraAdapter.hpp"
 
-#include <ac/local/ResourceManager.hpp>\
+#include <ac/local/ResourceManager.hpp>
 
 namespace ac::llama {
 
@@ -29,10 +29,7 @@ public:
     local::ResourceLock<LoraResource> getOrCreateLora(Model& model, std::string_view loraPath);
 
 private:
-    std::mutex m_modelsMutex;
     local::ResourceManager<ModelKey> m_modelsManager;
-
-    std::mutex m_lorasMutex;
     local::ResourceManager<LoraKey> m_lorasManager;
 };
 
