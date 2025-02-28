@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 #include "LogitComparer.hpp"
+#include <cmath>
 
 namespace ac::llama {
 
