@@ -271,11 +271,11 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
 
                 auto tokenStr = model.vocab().tokenToString(t);
                 auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
+                result += tokenStr;
                 if (!matchedAntiPrompt.empty()) {
+                    result.erase(result.size() - matchedAntiPrompt.size());
                     break;
                 }
-
-                result += tokenStr;
 
                 if (isStreaming && !antiprompt.hasRunningAntiprompts()) {
                     co_await io.push(Frame_fromStreamType(SchemaStreaming::StreamToken{}, result));
