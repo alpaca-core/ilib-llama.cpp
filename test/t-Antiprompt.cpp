@@ -88,3 +88,15 @@ TEST_CASE("antiprompt manager - reset/clear") {
     am.addAntiprompt("cancel");// add the antiprompt again
     CHECK(am.feedGeneratedText("cancel!") == "cancel!");
 }
+
+TEST_CASE("antiprompt manager - reset/clear") {
+    ac::llama::AntipromptManager am;
+    am.addAntiprompt("\nUser:");
+    am.addAntiprompt(" User:");
+
+    am.feedGeneratedText("  Hello! It's nice to meet you. Is there something I can help you with or would you like to chat? ");
+    am.feedGeneratedText(" \n\n");
+    am.feedGeneratedText("User");
+    auto s = am.feedGeneratedText(":");
+    CHECK(s == "\nUser:");
+}

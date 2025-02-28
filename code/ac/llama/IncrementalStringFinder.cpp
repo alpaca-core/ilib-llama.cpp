@@ -18,13 +18,14 @@ int IncrementalStringFinder::feedText(std::string_view text) {
     uint32_t promptPos = 0;
 
     while(promptPos < text.length() && m_currentPos < m_searchStr.length()) {
-        if (m_searchStr[m_currentPos] == text[promptPos]) {
-            m_currentPos++;
-        }
-        else {
+        if (m_searchStr[m_currentPos] != text[promptPos]) {
             // different character was found
             // need to start from the beginning
             m_currentPos = 0;
+        }
+
+        if (m_searchStr[m_currentPos] == text[promptPos]) {
+            m_currentPos++;
         }
 
         promptPos++;

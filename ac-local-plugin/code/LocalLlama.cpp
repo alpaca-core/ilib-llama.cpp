@@ -123,7 +123,8 @@ public:
             m_session.pushPrompt(m_promptTokens);
         }
 
-        ac::llama::IncrementalStringFinder finder(m_userPrefix);
+        ac::llama::AntipromptManager antiprompt;
+        antiprompt.addAntiprompt(m_userPrefix);
 
         m_addUserPrefix = true;
         Schema::OpGetChatResponse::Return ret;
@@ -139,14 +140,16 @@ public:
             auto tokenStr = m_vocab.tokenToString(t);
             response += tokenStr;
 
-            if (finder.feedText(tokenStr) >= 0) {
+            auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
+            if (!matchedAntiPrompt.empty()) {
                 // user prefix was added by generation, so don't add it again
                 m_addUserPrefix = false;
 
                 // and also hide it from the return value
                 // note that we assume that m_userPrefix is always the final piece of text in the response
                 // TODO: update to better match the cutoff when issue #131 is done
-                response.resize(response.size() - m_userPrefix.size());
+                response.erase(response.size() - matchedAntiPrompt.size());
+                m_addUserPrefix = false;
                 break;
             }
         }
