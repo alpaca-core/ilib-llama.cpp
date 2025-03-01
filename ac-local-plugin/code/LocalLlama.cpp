@@ -64,6 +64,7 @@ class ChatSession {
     llama::Session& m_session;
     const llama::Vocab& m_vocab;
     llama::Instance& m_instance;
+    IoEndpoint& m_io;
     std::string m_userPrefix;
     std::string m_assistantPrefix;
 
@@ -74,10 +75,11 @@ class ChatSession {
 public:
     using Schema = sc::StateChat;
 
-    ChatSession(llama::Instance& instance, sc::StateInstance::OpChatBegin::Params& params)
+    ChatSession(llama::Instance& instance, IoEndpoint& io, sc::StateInstance::OpChatBegin::Params& params)
         : m_session(instance.startSession({}))
         , m_vocab(instance.model().vocab())
         , m_instance(instance)
+        , m_io(io)
     {
         m_promptTokens = instance.model().vocab().tokenize(params.setup.value(), true, true);
         m_session.setInitialPrompt(m_promptTokens);
@@ -114,7 +116,19 @@ public:
         m_addAssistantPrefix = false;
     }
 
-    Schema::OpGetChatResponse::Return getResponse() {
+    xec::coro<std::optional<std::string>> getResponse(Schema::OpGetChatResponse::Params params) {
+        using SchemaStreaming = sc::StateStreaming;
+
+        int maxTokens = params.maxTokens.value();
+        // handle unlimited generation
+        if (maxTokens == 0) {
+            maxTokens = 1000;
+        }
+        const bool isStreaming = params.stream.value();
+        if (isStreaming) {
+            co_await m_io.push(Frame_stateChange(SchemaStreaming::id));
+        }
+
         if (m_addAssistantPrefix) {
             // generated responses are requested first, but we haven't yet fed the assistant prefix to the model
             auto prompt = m_assistantPrefix;
@@ -128,9 +142,9 @@ public:
 
         m_addUserPrefix = true;
         Schema::OpGetChatResponse::Return ret;
-        auto& response = ret.response.materialize();
+        auto& result = ret.response.materialize();
 
-        for (int i = 0; i < 1000; ++i) {
+        for (int i = 0; i < maxTokens; ++i) {
             auto t = m_session.getToken();
             if (t == ac::llama::Token_Invalid) {
                 // no more tokens
@@ -138,7 +152,7 @@ public:
             }
 
             auto tokenStr = m_vocab.tokenToString(t);
-            response += tokenStr;
+            result += tokenStr;
 
             auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
             if (!matchedAntiPrompt.empty()) {
@@ -148,20 +162,33 @@ public:
                 // and also hide it from the return value
                 // note that we assume that m_userPrefix is always the final piece of text in the response
                 // TODO: update to better match the cutoff when issue #131 is done
-                response.erase(response.size() - matchedAntiPrompt.size());
+                result.erase(result.size() - matchedAntiPrompt.size());
                 m_addUserPrefix = false;
                 break;
+            }
+
+            if (isStreaming && !antiprompt.hasRunningAntiprompts()) {
+                co_await m_io.push(Frame_fromStreamType(SchemaStreaming::StreamToken{}, result));
+                result = {};
             }
         }
 
         // remove leading space if any
         // we could add the space to the assistant prefix, but most models have a much easier time generating tokens
         // with a leading space, so instead of burdening them with "unorthodox" tokens, we'll clear it here
-        if (!response.empty() && response[0] == ' ') {
-            response.erase(0, 1);
+        if (!result.empty() && result[0] == ' ') {
+            result.erase(0, 1);
         }
 
-        return ret;
+        if (isStreaming) {
+            if (!result.empty()) {
+                co_await m_io.push(Frame_fromStreamType(sc::StateStreaming::StreamToken{}, result));
+                result = {};
+            }
+            co_await m_io.push(Frame_stateChange(Schema::id));
+        }
+
+        co_return result;
     }
 };
 
@@ -170,6 +197,7 @@ xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
 
     struct Runner : public BasicRunner {
         ChatSession& chatSession;
+        xec::coro<std::optional<std::string>> nextCoro;
 
         enum class State {
             Running,
@@ -192,8 +220,11 @@ xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
             return {};
         }
 
-        Schema::OpGetChatResponse::Return on(Schema::OpGetChatResponse, Schema::OpGetChatResponse::Params&&) {
-            return chatSession.getResponse();
+        Schema::OpGetChatResponse::Return on(Schema::OpGetChatResponse, Schema::OpGetChatResponse::Params&& params) {
+            nextCoro = chatSession.getResponse(params);
+            return {
+                .response = ""
+            };
         }
     };
 
@@ -202,7 +233,15 @@ xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
     Runner runner(chat);
     while (true) {
         auto f = co_await io.poll();
-        co_await io.push(runner.dispatch(*f));
+        auto dispatchRes = runner.dispatch(*f);
+        co_await io.push(dispatchRes);
+        if (runner.nextCoro) {
+            auto coroRes = co_await runner.nextCoro;
+            if (coroRes.has_value() && !coroRes.value().empty()) {
+                auto d = Struct_toDict(Schema::OpGetChatResponse::Return{.response = coroRes.value()});
+                co_await io.push({f->op, d});
+            }
+        }
         if (runner.state == Runner::State::End) {
             co_return;
         }
@@ -360,7 +399,7 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
         }
 
         Schema::OpChatBegin::Return on(Schema::OpChatBegin, Schema::OpChatBegin::Params&& params) {
-            m_chatSession.emplace(m_instance, params);
+            m_chatSession.emplace(m_instance, io, params);
             return {};
         }
 
@@ -429,7 +468,6 @@ xec::coro<void> Llama_runInstanceEmbedding(IoEndpoint& io, std::unique_ptr<llama
         co_await io.push(runner.dispatch(*f));
     }
 }
-
 
 template <typename Params, typename ReturnParams>
 static ReturnParams Params_fromSchema(Params& params) {
