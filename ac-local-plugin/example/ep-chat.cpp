@@ -48,29 +48,45 @@ int main() try {
     });
     llama.expectState<schema::StateChat>();
 
-    // Change state back from chat to instance
-    llama.call<schema::StateChat::OpChatEnd>({});
-    llama.expectState<schema::StateInstance>();
 
+
+    const std::string roleUser = "user";
+    const std::string roleAssistant = "assistant";
     llama.call<schema::StateInstance::OpChatBegin>({
         .setup = "A chat between a human user and a helpful AI assistant.",
-        .roleUser = "user",
-        .roleAssistant = "assistant"
+        .roleUser = roleUser,
+        .roleAssistant = roleAssistant
     });
     llama.expectState<schema::StateChat>();
 
     while (true) {
-        std::cout << "User: ";
+        std::cout << roleUser <<": ";
         std::string user;
-        std::getline(std::cin, user);
+        while (user.empty()) {
+            std::getline(std::cin, user);
+        }
         if (user == "/quit") break;
         user = ' ' + user;
         llama.call<schema::StateChat::OpAddChatPrompt>({
             .prompt = user
         });
 
-        auto res = llama.call<schema::StateChat::OpGetChatResponse>({});
-        std::cout << "AI: " << res.response.value() << '\n';
+        constexpr bool shouldStream = false;
+        auto res = llama.call<schema::StateChat::OpGetChatResponse>({
+            .stream = shouldStream
+        });
+
+        if (shouldStream) {
+            llama.expectState<schema::StateStreaming>();
+            std::cout << roleAssistant << ": ";
+            for(auto t : llama.runStream<schema::StateStreaming::StreamToken, schema::StateChat>()) {
+                std::cout << t << std::flush;
+            };
+            std::cout << '\n';
+        } else {
+            std::cout << roleAssistant << ": " << res.response.value() << '\n';
+        }
+
     }
 
     return 0;

@@ -273,7 +273,16 @@ struct StateChat {
         static inline constexpr std::string_view id = "get-chat-response";
         static inline constexpr std::string_view desc = "Get a response from the chat session";
 
-        using Params = nullptr_t;
+        struct Params {
+            Field<uint32_t> maxTokens = Default(0);
+            Field<bool> stream = Default(true);
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(maxTokens, "max_tokens", "Maximum number of tokens to generate. 0 for unlimited");
+                v(stream, "stream", "Stream the output");
+            }
+        };
 
         struct Return {
             Field<std::string> response;
