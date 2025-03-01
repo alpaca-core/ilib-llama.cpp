@@ -71,7 +71,7 @@ int main() try {
             .prompt = user
         });
 
-        constexpr bool shouldStream = false;
+        constexpr bool shouldStream = true;
         auto res = llama.call<schema::StateChat::OpGetChatResponse>({
             .stream = shouldStream
         });

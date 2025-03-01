@@ -198,6 +198,7 @@ xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
     struct Runner : public BasicRunner {
         ChatSession& chatSession;
         xec::coro<std::optional<std::string>> nextCoro;
+        bool immediatePush = true;
 
         enum class State {
             Running,
@@ -222,6 +223,7 @@ xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
 
         Schema::OpGetChatResponse::Return on(Schema::OpGetChatResponse, Schema::OpGetChatResponse::Params&& params) {
             nextCoro = chatSession.getResponse(params);
+            immediatePush = params.stream.value();
             return {
                 .response = ""
             };
@@ -234,13 +236,18 @@ xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
     while (true) {
         auto f = co_await io.poll();
         auto dispatchRes = runner.dispatch(*f);
-        co_await io.push(dispatchRes);
         if (runner.nextCoro) {
+            if (runner.immediatePush) {
+                co_await io.push(dispatchRes);
+                runner.immediatePush = false;
+            }
             auto coroRes = co_await runner.nextCoro;
             if (coroRes.has_value() && !coroRes.value().empty()) {
                 auto d = Struct_toDict(Schema::OpGetChatResponse::Return{.response = coroRes.value()});
                 co_await io.push({f->op, d});
             }
+        } else {
+            co_await io.push(dispatchRes);
         }
         if (runner.state == Runner::State::End) {
             co_return;
@@ -256,6 +263,7 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
         IoEndpoint& io;
         std::optional<ChatSession> m_chatSession;
         xec::coro<std::optional<std::string>> nextCoro;
+        bool immediatePush = false;
 
         enum class State {
             Running,
@@ -275,6 +283,7 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             }
 
             nextCoro = runOp(params);
+            immediatePush = params.stream.value();
             return {
                 .result = ""
             };
@@ -415,14 +424,21 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
     while (true) {
         auto f = co_await io.poll();
         auto dispatchRes = runner.dispatch(*f);
-        co_await io.push(dispatchRes);
+
         if (runner.nextCoro) {
+            if (runner.immediatePush) {
+                co_await io.push(dispatchRes);
+                runner.immediatePush = false;
+            }
             auto coroRes = co_await runner.nextCoro;
             if (coroRes.has_value() && !coroRes.value().empty()) {
                 auto d = Struct_toDict(Schema::OpRun::Return{.result = coroRes.value()});
                 co_await io.push({f->op, d});
             }
+        } else {
+            co_await io.push(dispatchRes);
         }
+
         if (runner.m_chatSession) {
             co_await Llama_beginChat(io, runner.m_chatSession.value());
             runner.m_chatSession.reset();
