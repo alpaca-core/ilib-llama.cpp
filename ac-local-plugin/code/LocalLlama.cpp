@@ -47,7 +47,7 @@ struct BasicRunner {
         try {
             auto ret = m_dispatcherData.dispatch(f.op, std::move(f.data));
             if (!ret) {
-                throw_ex{} << "dummy: unknown op: " << f.op;
+                throw_ex{} << "llama: unknown op: " << f.op;
             }
             return {f.op, *ret};
         }
