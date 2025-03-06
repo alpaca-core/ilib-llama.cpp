@@ -41,15 +41,6 @@ int main() try {
     });
     llama.expectState<schema::StateInstance>();
 
-    llama.call<schema::StateInstance::OpChatBegin>({
-        .setup = "A chat between a human user and a helpful AI assistant.",
-        .roleUser = "user",
-        .roleAssistant = "assistant"
-    });
-    llama.expectState<schema::StateChat>();
-
-
-
     const std::string roleUser = "user";
     const std::string roleAssistant = "assistant";
     llama.call<schema::StateInstance::OpChatBegin>({
