@@ -40,11 +40,15 @@ init_ac_plugin_option(LLAMA)
 add_ac_local(0.1.20)
 
 CPMAddPackage(
-    NAME jinja2cpp
-    VERSION 1.0.0
-    GIT_REPOSITORY https://github.com/alpaca-core/Jinja2Cpp.git
-    GIT_TAG 17fb002c325eba2af8c03210e89b63324194e796
+    NAME minja
+    GIT_REPOSITORY https://github.com/google/minja.git
+    GIT_TAG dee1b8921ccdc51846080fda5299bae2b592d354
+    DOWNLOAD_ONLY YES
 )
+
+add_library(minja INTERFACE)
+target_include_directories(minja INTERFACE ${minja_SOURCE_DIR}/include)
+message(STATUS "${CMAKE_PROJECT_NAME}: minja found in ${minja_SOURCE_DIR}")
 
 #######################################
 # submodule and config
