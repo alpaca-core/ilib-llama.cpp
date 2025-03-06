@@ -5,8 +5,6 @@
 #include "export.h"
 #include "ChatMsg.hpp"
 
-#include <jinja2cpp/template.h>
-
 #include <span>
 #include <unordered_map>
 
@@ -33,7 +31,7 @@ public:
     // wrapper around jinja template formatting
     // params are options for the template
     // TODO: Do not expose jinj2::ValuesMap to the user
-    std::string formatChat(std::span<const ChatMsg> chat, jinja2::ValuesMap params = {});
+    // std::string formatChat(std::span<const ChatMsg> chat, jinja2::ValuesMap params = {});
 
     // format single message taking history into account
     std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt = false);
@@ -45,6 +43,5 @@ private:
 
     std::string m_template;
     int m_templateId;
-    jinja2::Template m_jTemplate;
 };
 } // namespace ac::llama

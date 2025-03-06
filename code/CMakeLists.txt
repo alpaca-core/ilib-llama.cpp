@@ -11,8 +11,14 @@ target_link_libraries(ac-llama
     PUBLIC
         ac::astl
         ac::local
-        jinja2cpp
+        minja
 )
+
+target_include_directories(ac-llama
+    PRIVATE
+        minja-include-hack
+)
+
 target_sources(ac-llama
     INTERFACE FILE_SET HEADERS FILES
         ac/llama/export.h
