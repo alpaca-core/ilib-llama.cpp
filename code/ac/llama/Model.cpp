@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 #include "Model.hpp"
-#include "LoraAdapter.hpp"
+#include "Logging.hpp"
 #include <llama.h>
 #include <astl/move.hpp>
 #include <stdexcept>
@@ -66,21 +66,6 @@ bool Model::shouldAddBosToken() const noexcept {
 
 bool Model::hasEncoder() const noexcept {
     return llama_model_has_encoder(m_model->m_model.get());
-}
-
-std::string Model::getChatTemplateId() const {
-    // load template from model
-    constexpr size_t bufSize = 2048; // longest known template is about 1200 bytes
-    std::unique_ptr<char[]> tplBuf(new char[bufSize]);
-
-    const char* key = "tokenizer.chat_template";
-
-    int32_t len = llama_model_meta_val_str(m_model->m_model.get(), key, tplBuf.get(), bufSize);
-    if (len < 0) {
-        return "chatml"; // default fallback
-    }
-
-    return std::string(tplBuf.get(), len);
 }
 
 llama_model* Model::lmodel() noexcept { return m_model->m_model.get(); }

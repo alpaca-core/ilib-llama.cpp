@@ -3,6 +3,9 @@
 //
 #include "ChatFormat.hpp"
 
+#include "Logging.hpp"
+#include "Model.hpp"
+
 #include <llama.h>
 #include <llama-chat.h>
 
@@ -20,6 +23,14 @@ namespace nlohmann = acnl;
 namespace ac::llama {
 namespace {
 
+#define CHATML_TEMPLATE_SRC \
+    "{%- for message in messages -%}\n" \
+    "  {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>\n' -}}\n" \
+    "{%- endfor -%}\n" \
+    "{%- if add_generation_prompt -%}\n" \
+    "  {{- '<|im_start|>assistant\n' -}}\n" \
+    "{%- endif -%}"
+
 std::pair<std::vector<llama_chat_message>, size_t> fromChatMsg(std::span<const ChatMsg> chat) {
     std::vector<llama_chat_message> lchat;
     size_t size = 0;
@@ -30,6 +41,18 @@ std::pair<std::vector<llama_chat_message>, size_t> fromChatMsg(std::span<const C
         size += msg.text.size();
     }
     return {lchat, size};
+}
+
+acnl::json transformMessages(std::span<const llama_chat_message> chat) {
+    acnl::json messages = acnl::json::array();
+    for (const auto& msg : chat) {
+        acnl::json jmsg = {
+            {"role", msg.role},
+            {"content", msg.content},
+        };
+        messages.push_back(jmsg);
+    }
+    return messages;
 }
 
 // The maximum characters that are in the template but not in the message that will be added in the final message
@@ -79,66 +102,18 @@ static_assert(std::size(MAX_SINGLE_MESSAGE_TEMPLATE_SIZE_DATA) == size_t(LLM_CHA
 
 } // namespace
 
-ChatFormat::ChatFormat(std::string tpl)
-    : m_template(astl::move(tpl))
-    , m_templateId(llm_chat_detect_template(m_template))
-{
-    if (m_templateId == LLM_CHAT_TEMPLATE_UNKNOWN) {
-        throw_ex{} << "Unsupported llama template: " << m_template;
+ChatFormat::ChatFormat(Params params) {
+    m_templateStr = std::move(params.chatTemplate);
+
+    try {
+        m_minjaTemplate = std::make_unique<minja::chat_template>(m_templateStr, params.bosToken, params.eosToken);
+    } catch (const std::exception & e) {
+        LLAMA_LOG(Error, "Failed to parse jinja chat template (defaulting to chatml): %s \n", e.what());
+        m_minjaTemplate = std::make_unique<minja::chat_template>(CHATML_TEMPLATE_SRC, params.bosToken, params.eosToken);
     }
 }
 
-ChatFormat::ChatFormat(std::string tpl, std::span<std::string> roles)
-    : m_template(astl::move(tpl))
-    , m_templateId(LLM_CHAT_TEMPLATE_UNKNOWN)
-{
-    // auto parse_result = m_jTemplate.Load(m_template);
-    // if (!parse_result) {
-    //     throw_ex{} << "Unsupported custom template: " << m_template;
-    // }
-
-    // std::vector<std::string> rolesMessages(roles.size());
-    // for (size_t i = 0; i < roles.size(); i++) {
-    //     rolesMessages[i] = "Message " + std::to_string(i);
-    // }
-
-    // jinja2::ValuesList messagesArr;
-    // for (size_t i = 0; i < roles.size(); i++) {
-    //     jinja2::ValuesMap message;
-    //     message["role"] = roles[i];
-    //     message["content"] = rolesMessages[i];
-
-    //     messagesArr.push_back(message);
-    // };
-
-    // jinja2::ValuesMap context;
-    // context["messages"] = messagesArr;
-
-    // auto result = m_jTemplate.RenderAsString(context);
-    // if (!result) {
-    //     throw_ex{} << "Missing iteration clause for 'messages'" << m_template;
-    // }
-
-    // for (size_t i = 0; i < rolesMessages.size(); i++) {
-    //     if (result.value().find(rolesMessages[i]) == std::string::npos) {
-    //         throw_ex{} << "Unsupported template. Couldn't handle role: " << roles[i];
-    //     }
-    // }
-}
-
-const char* ChatFormat::templateId() const noexcept {
-    if (m_templateId != LLM_CHAT_TEMPLATE_UNKNOWN) {
-        auto supportedTemplates = getSupportedTemplates();
-
-        for (auto& tmpl : supportedTemplates) {
-            if (llm_chat_template_from_str(tmpl) == llm_chat_template(m_templateId)) {
-                return tmpl;
-            }
-        }
-    }
-
-    return "custom";
-}
+ChatFormat::~ChatFormat() {}
 
 std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) {
     assert(m_templateId != LLM_CHAT_TEMPLATE_UNKNOWN);
@@ -146,32 +121,6 @@ std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssist
     auto [lchat, size] = fromChatMsg(chat);
     return apply(lchat, size, addAssistantPrompt);
 }
-
-// std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, jinja2::ValuesMap params) {
-//     assert(m_templateId == LLM_CHAT_TEMPLATE_UNKNOWN);
-//     jinja2::ValuesMap data;
-//     for (auto& msg : chat) {
-//         data[msg.role] = msg.text;
-//     }
-
-//     jinja2::ValuesList messages;
-//     for (size_t i = 0; i < chat.size(); i++) {
-//         jinja2::ValuesMap message;
-//         message["role"] = chat[i].role;
-//         message["content"] = chat[i].text;
-
-//         messages.push_back(message);
-//     };
-
-//     jinja2::ValuesMap context;
-//     context["messages"] = messages;
-//     for (auto& [key, value] : params) {
-//         context[key] = value;
-//     }
-
-//     auto res = m_jTemplate.RenderAsString(context);
-//     return res.value();
-// }
 
 std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) {
     if (history.empty()) {
@@ -198,44 +147,79 @@ std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> h
     return ret;
 }
 
-std::vector<const char*> ChatFormat::getSupportedTemplates() {
-    std::vector<const char*> templates;
-
-    int res = llama_chat_builtin_templates(nullptr, 0);
-    assert(res > 0);
-
-    templates.resize(res);
-    res = llama_chat_builtin_templates(templates.data(), templates.size());
-
-    return templates;
-}
-
 std::string ChatFormat::apply(std::span<const llama_chat_message> chat, size_t size, bool addAssistantPrompt) const {
     if (size == 0) return {};
 
-    // TODO: take assistant prompt into account
-    auto msgSize = MAX_SINGLE_MESSAGE_TEMPLATE_SIZE.at(llm_chat_template(m_templateId));
-    auto formattedChatAllocSize = size + chat.size() * msgSize;
-    std::string fmt(formattedChatAllocSize, '\0');
+    // // TODO: take assistant prompt into account
+    // auto msgSize = MAX_SINGLE_MESSAGE_TEMPLATE_SIZE.at(llm_chat_template(m_templateId));
+    // auto formattedChatAllocSize = size + chat.size() * msgSize;
+    // std::string fmt(formattedChatAllocSize, '\0');
 
-    // run the first time and get the total output length
-    int32_t res = llama_chat_apply_template(m_template.c_str(), chat.data(), chat.size(),
-        addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
+    // // run the first time and get the total output length
+    // int32_t res = llama_chat_apply_template(m_templateStr.c_str(), chat.data(), chat.size(),
+    //     addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
 
-    if (res > int32_t(fmt.size())) {
-        // The assert should never happen, the case when it might occur is
-        // - not updated value in MAX_SINGLE_MESSAGE_TEMPLATE_SIZE, because a template has been changed in llama.cpp
-        assert(false && "The max template size is not calculated properly! Will re-run the template with the correct size.");
-        // optimistic size was not enough
-        fmt.resize(res);
-        res = llama_chat_apply_template(m_template.c_str(), chat.data(), chat.size(),
-            addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
+    // if (res > int32_t(fmt.size())) {
+    //     // The assert should never happen, the case when it might occur is
+    //     // - not updated value in MAX_SINGLE_MESSAGE_TEMPLATE_SIZE, because a template has been changed in llama.cpp
+    //     assert(false && "The max template size is not calculated properly! Will re-run the template with the correct size.");
+    //     // optimistic size was not enough
+    //     fmt.resize(res);
+    //     res = llama_chat_apply_template(m_templateStr.c_str(), chat.data(), chat.size(),
+    //         addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
+    // }
+
+    // assert(res >= 0);
+
+    // fmt.resize(res);
+    // return fmt;
+
+    auto startsWith = [](const std::string& str, const std::string& prefix) {
+        return str.rfind(prefix, 0) == 0;
+    };
+
+    minja::chat_template_inputs tmpl_inputs;
+    tmpl_inputs.messages = transformMessages(chat);
+    // tmpl_inputs.tools = tools;
+    // tmpl_inputs.add_generation_prompt = true;
+    // tmpl_inputs.extra_context = extra_context;
+    // TODO: add flag to control date/time, if only for testing purposes.
+    // tmpl_inputs.now = std::chrono::system_clock::now();
+
+    minja::chat_template_options tmpl_opts;
+    // To avoid double BOS / EOS tokens, we're manually removing begining / trailing tokens
+    // instead of using `chat_template_options.use_bos_token = false`, since these tokens
+    // may be needed inside the template / between messages too.
+    auto result = m_minjaTemplate->apply(tmpl_inputs, tmpl_opts);
+    if (startsWith(result, m_minjaTemplate->bos_token())) {
+        result = result.substr(m_minjaTemplate->bos_token().size());
     }
-
-    assert(res >= 0);
-
-    fmt.resize(res);
-    return fmt;
+    if (startsWith(result, m_minjaTemplate->eos_token())) {
+        result = result.substr(0, result.size() - m_minjaTemplate->eos_token().size());
+    }
+    return result;
 }
+
+ChatFormat::Params getChatParams(const Model& model) {
+    ChatFormat::Params chatParams;
+    chatParams.chatTemplate = llama_model_chat_template(model.lmodel(), nullptr);
+
+    const auto getTokenStr = [&](llama_token token, const char * name, const char * jinja_variable_name) {
+        if (token == LLAMA_TOKEN_NULL) {
+            if (chatParams.chatTemplate.find(jinja_variable_name) != std::string::npos) {
+                LLAMA_LOG(Warning, "Vocab doesn't have a \"%s\" token, jinja template won't work as intended.\n", name);
+            }
+            return std::string();
+        }
+        return model.vocab().tokenToString(token, true);
+    };
+
+    const auto * vocab = llama_model_get_vocab(model.lmodel());
+    chatParams.bosToken = getTokenStr(llama_vocab_bos(vocab), "BOS", "bos_token");
+    chatParams.eosToken = getTokenStr(llama_vocab_eos(vocab), "EOS", "eos_token");
+
+    return chatParams;
+}
+
 
 } // namespace ac::llama
