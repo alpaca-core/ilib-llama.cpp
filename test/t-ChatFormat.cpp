@@ -1,12 +1,16 @@
 // Copyright (c) Alpaca Core
 // SPDX-License-Identifier: MIT
 //
+#include <ac/llama/Model.hpp>
+#include <ac/llama/ResourceCache.hpp>
 #include <ac/llama/ChatFormat.hpp>
 #include <astl/u8c.h>
 #include <doctest/doctest.h>
 #include <vector>
 
 #include <iostream>
+
+#include "ac-test-data-llama-dir.h"
 
 static std::string normalize_newlines(const std::string & s) {
 #ifdef _WIN32
@@ -370,6 +374,18 @@ TEST_CASE("custom template2") {
         }
     }
 
-
     CHECK(res == expected_str);
+}
+
+TEST_CASE("getChatParams") {
+    ac::llama::ResourceCache resourceCache;
+    const char* Model_117m_q6_k = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
+    ac::llama::Model::Params iParams = { .vocabOnly = true };
+    auto model = ac::llama::Model(resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {}), iParams);
+    CHECK(!!model.lmodel());
+    auto chatParams = ac::llama::getChatParams(model);
+
+    CHECK(chatParams.chatTemplate == "");
+    CHECK(chatParams.bosToken == "<|endoftext|>");
+    CHECK(chatParams.eosToken == "<|endoftext|>");
 }
