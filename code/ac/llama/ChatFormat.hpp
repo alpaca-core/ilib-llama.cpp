@@ -6,7 +6,6 @@
 #include "ChatMsg.hpp"
 
 #include <span>
-#include <unordered_map>
 
 struct llama_chat_message;
 
