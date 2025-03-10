@@ -138,8 +138,8 @@ std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssist
     if (size == 0) return {};
 
     return m_useJinja ?
-    applyJinja(m_minjaTemplate.get(), jchat, addAssistantPrompt) :
-    applyLlama(m_templateStr, lchat, size, addAssistantPrompt);
+        applyJinja(m_minjaTemplate.get(), jchat, addAssistantPrompt) :
+        applyLlama(m_templateStr, lchat, size, addAssistantPrompt);
 }
 
 std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const {
