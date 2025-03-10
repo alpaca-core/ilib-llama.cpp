@@ -33,10 +33,10 @@ public:
 
     // wrapper around llama_chat_apply_template
     // throw an error on unsupported template
-    std::string formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt);
+    std::string formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const ;
 
     // format single message taking history into account
-    std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt = false);
+    std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt = false) const;
 
 private:
 

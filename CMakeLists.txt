@@ -48,7 +48,6 @@ CPMAddPackage(
 
 add_library(minja INTERFACE)
 target_include_directories(minja INTERFACE ${minja_SOURCE_DIR}/include)
-message(STATUS "${CMAKE_PROJECT_NAME}: minja found in ${minja_SOURCE_DIR}")
 
 #######################################
 # submodule and config
