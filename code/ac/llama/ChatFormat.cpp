@@ -23,14 +23,6 @@ namespace nlohmann = acnl;
 namespace ac::llama {
 namespace {
 
-#define CHATML_TEMPLATE_SRC \
-    "{%- for message in messages -%}\n" \
-    "  {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>\n' -}}\n" \
-    "{%- endfor -%}\n" \
-    "{%- if add_generation_prompt -%}\n" \
-    "  {{- '<|im_start|>assistant\n' -}}\n" \
-    "{%- endif -%}"
-
 std::pair<std::vector<llama_chat_message>, size_t> ac2llamaChatMessages(std::span<const ChatMsg> chat) {
     std::vector<llama_chat_message> lchat;
     size_t size = 0;
@@ -129,7 +121,7 @@ ChatFormat::ChatFormat(Params params)
 
 ChatFormat::~ChatFormat() {}
 
-std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) {
+std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const {
     acnl::json jchat;
     std::vector<llama_chat_message> lchat;
     size_t size = 0;
@@ -150,7 +142,7 @@ std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssist
     applyLlama(m_templateStr, lchat, size, addAssistantPrompt);
 }
 
-std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) {
+std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const {
     if (history.empty()) {
         return formatChat({&msg, 1}, addAssistantPrompt);
     }
