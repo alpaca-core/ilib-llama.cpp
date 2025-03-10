@@ -38,12 +38,10 @@ public:
     // format single message taking history into account
     std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt = false) const;
 
+    class impl;
 private:
-
     std::string m_templateStr;
-    int m_templateId;
-    std::unique_ptr<minja::chat_template> m_minjaTemplate;
-    bool m_useJinja;
+    std::unique_ptr<impl> m_impl;
 };
 
 ChatFormat::Params getChatParams(const Model& model);

@@ -21,174 +21,187 @@ namespace nlohmann = acnl;
 #include <map>
 
 namespace ac::llama {
-namespace {
 
-std::pair<std::vector<llama_chat_message>, size_t> ac2llamaChatMessages(std::span<const ChatMsg> chat) {
-    std::vector<llama_chat_message> lchat;
-    size_t size = 0;
-    lchat.reserve(chat.size());
-    for (const auto& msg : chat) {
+
+class ChatFormat::impl {
+public:
+    virtual ~impl() = default;
+    virtual std::string formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const = 0;
+    virtual std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const = 0;
+};
+
+class LlamaImpl : public ChatFormat::impl {
+public:
+    LlamaImpl(std::string templateStr)
+        : m_templateStr(std::move(templateStr))
+        , m_templateId(llm_chat_detect_template(m_templateStr.c_str()))
+    {
+        if (m_templateId == LLM_CHAT_TEMPLATE_UNKNOWN) {
+            throw_ex{} << "Unsupported chat template: " << m_templateStr;
+        }
+    }
+
+    virtual std::string formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const override{
+        auto [lchat, size] = ac2llamaChatMessages(chat);
+        return size != 0 ? applyLlama(m_templateStr, lchat, size, addAssistantPrompt) : "";
+    }
+
+    virtual std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const override {
+        if (history.empty()) {
+            return formatChat({&msg, 1}, addAssistantPrompt);
+        }
+
+        auto [lchat, size] = ac2llamaChatMessages(history);
+        auto fmtHistory = applyLlama(m_templateStr, lchat, size, false);
+
         lchat.push_back({msg.role.c_str(), msg.text.c_str()});
-        size += msg.role.size();
-        size += msg.text.size();
-    }
-    return {lchat, size};
-}
+        size += msg.role.size() + msg.text.size();
 
-std::pair<acnl::json, size_t> ac2jsonChatMessages(std::span<const ChatMsg> chat) {
-    acnl::json messages = acnl::json::array();
-    size_t size = 0;
-    for (const auto& msg : chat) {
-        acnl::json jmsg = {
-            {"role", msg.role},
-            {"content", msg.text},
+        std::string ret;
+        // if the past_msg ends with a newline, we must preserve it in the formatted version
+        if (addAssistantPrompt && fmtHistory.ends_with('\n')) {
+            ret = "\n";
         };
-        messages.push_back(jmsg);
-        size += msg.role.size();
-        size += msg.text.size();
+
+        auto fmtNew = applyLlama(m_templateStr, lchat, size, addAssistantPrompt);
+        return ret + fmtNew.substr(fmtHistory.size());
     }
-    return {messages, size};
-}
 
+    ~LlamaImpl() {}
 
-std::string applyLlama(const std::string& templateStr, std::span<llama_chat_message> lchat, size_t size, bool addAssistantPrompt) {
-    auto allocSize = (size * 5) / 4; // optimistic 25% more than the original size
-    std::string fmt(allocSize, '\0');
+private:
+    std::pair<std::vector<llama_chat_message>, size_t> ac2llamaChatMessages(std::span<const ChatMsg> chat) const {
+        std::vector<llama_chat_message> lchat;
+        size_t size = 0;
+        lchat.reserve(chat.size());
+        for (const auto& msg : chat) {
+            lchat.push_back({msg.role.c_str(), msg.text.c_str()});
+            size += msg.role.size();
+            size += msg.text.size();
+        }
+        return {lchat, size};
+    }
 
-    // run the first time and get the total output length
-    int32_t res = llama_chat_apply_template(templateStr.c_str(), lchat.data(), lchat.size(),
-        addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
+    std::string applyLlama(const std::string& templateStr, std::span<llama_chat_message> lchat, size_t size, bool addAssistantPrompt) const {
+        auto allocSize = (size * 5) / 4; // optimistic 25% more than the original size
+        std::string fmt(allocSize, '\0');
 
-    if (res > int32_t(fmt.size())) {
-        // optimistic size was not enough
-        fmt.resize(res);
-        res = llama_chat_apply_template(templateStr.c_str(), lchat.data(), lchat.size(),
+        // run the first time and get the total output length
+        int32_t res = llama_chat_apply_template(templateStr.c_str(), lchat.data(), lchat.size(),
             addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
+
+        if (res > int32_t(fmt.size())) {
+            // optimistic size was not enough
+            fmt.resize(res);
+            res = llama_chat_apply_template(templateStr.c_str(), lchat.data(), lchat.size(),
+                addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
+        }
+
+        assert(res >= 0);
+
+        fmt.resize(res);
+        return fmt;
     }
 
-    assert(res >= 0);
+    std::string m_templateStr;
+    int m_templateId;
+};
 
-    fmt.resize(res);
-    return fmt;
-}
+class JinjaImpl : public ChatFormat::impl {
+public:
+    JinjaImpl(ChatFormat::Params params)
+    {
+        m_templateStr = std::move(params.chatTemplate);
 
-std::string applyJinja(minja::chat_template* minjaTemplate, acnl::json jChat, bool /*addAssistantPrompt*/) {
-    auto startsWith = [](const std::string& str, const std::string& prefix) {
-        return str.rfind(prefix, 0) == 0;
-    };
-
-    minja::chat_template_inputs tmpl_inputs;
-    tmpl_inputs.messages = jChat;
-
-    minja::chat_template_options tmpl_opts;
-    // To avoid double BOS / EOS tokens, we're manually removing begining / trailing tokens
-    // instead of using `chat_template_options.use_bos_token = false`, since these tokens
-    // may be needed inside the template / between messages too.
-    auto result = minjaTemplate->apply(tmpl_inputs, tmpl_opts);
-    if (startsWith(result, minjaTemplate->bos_token())) {
-        result = result.substr(minjaTemplate->bos_token().size());
+        try {
+            m_minjaTemplate = std::make_unique<minja::chat_template>(m_templateStr, params.bosToken, params.eosToken);
+        } catch (const std::exception & e) {
+            throw_ex{} << "Unsupported jinja template. Error: " << e.what();
+        }
     }
-    if (startsWith(result, minjaTemplate->eos_token())) {
-        result = result.substr(0, result.size() - minjaTemplate->eos_token().size());
+
+    ~JinjaImpl() {}
+
+    virtual std::string formatChat(std::span<const ChatMsg> chat, bool /*addAssistantPrompt*/) const override {
+        auto [jChat, size] = ac2jsonChatMessages(chat);
+        return size == 0 ? std::string{} : applyJinja(m_minjaTemplate.get(), jChat);
     }
-    return result;
-}
 
+    virtual std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const override {
+        if (history.empty()) {
+            return formatChat({&msg, 1}, addAssistantPrompt);
+        }
 
-} // namespace
+        auto [jchat, size] = ac2jsonChatMessages(history);
+        auto fmtHistory = applyJinja(m_minjaTemplate.get(), jchat);
+
+        jchat.push_back({{"role", msg.role}, {"content", msg.text}});
+        auto fmtNew = applyJinja(m_minjaTemplate.get(), jchat);
+
+        return fmtNew.substr(fmtHistory.size());
+    }
+
+private:
+    std::pair<acnl::json, size_t> ac2jsonChatMessages(std::span<const ChatMsg> chat) const {
+        acnl::json messages = acnl::json::array();
+        size_t size = 0;
+        for (const auto& msg : chat) {
+            acnl::json jmsg = {
+                {"role", msg.role},
+                {"content", msg.text},
+            };
+            messages.push_back(jmsg);
+            size += msg.role.size();
+            size += msg.text.size();
+        }
+        return {messages, size};
+    }
+
+    std::string applyJinja(minja::chat_template* minjaTemplate, acnl::json jChat) const {
+        auto startsWith = [](const std::string& str, const std::string& prefix) {
+            return str.rfind(prefix, 0) == 0;
+        };
+
+        minja::chat_template_inputs tmpl_inputs;
+        tmpl_inputs.messages = jChat;
+
+        minja::chat_template_options tmpl_opts;
+        // To avoid double BOS / EOS tokens, we're manually removing begining / trailing tokens
+        // instead of using `chat_template_options.use_bos_token = false`, since these tokens
+        // may be needed inside the template / between messages too.
+        auto result = minjaTemplate->apply(tmpl_inputs, tmpl_opts);
+        if (startsWith(result, minjaTemplate->bos_token())) {
+            result = result.substr(minjaTemplate->bos_token().size());
+        }
+        if (startsWith(result, minjaTemplate->eos_token())) {
+            result = result.substr(0, result.size() - minjaTemplate->eos_token().size());
+        }
+        return result;
+    }
+
+    std::unique_ptr<minja::chat_template> m_minjaTemplate;
+    std::string m_templateStr;
+};
+
 
 ChatFormat::ChatFormat(std::string templateStr)
-    : m_templateStr(std::move(templateStr))
-    , m_templateId(llm_chat_detect_template(m_templateStr.c_str()))
-    , m_useJinja(false)
-{
-    if (m_templateId == LLM_CHAT_TEMPLATE_UNKNOWN) {
-        throw_ex{} << "Unsupported chat template: " << m_templateStr;
-    }
-}
+: m_templateStr(templateStr)
+, m_impl(std::make_unique<LlamaImpl>(std::move(templateStr)))
+{}
 
 ChatFormat::ChatFormat(Params params)
-    : m_useJinja(true)
-{
-    m_templateStr = std::move(params.chatTemplate);
-
-    try {
-        m_minjaTemplate = std::make_unique<minja::chat_template>(m_templateStr, params.bosToken, params.eosToken);
-    } catch (const std::exception & e) {
-        throw_ex{} << "Unsupported jinja template. Error: " << e.what();
-    }
-}
+    : m_templateStr(params.chatTemplate)
+    , m_impl(std::make_unique<JinjaImpl>(params))
+{}
 
 ChatFormat::~ChatFormat() {}
 
 std::string ChatFormat::formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const {
-    acnl::json jchat;
-    std::vector<llama_chat_message> lchat;
-    size_t size = 0;
-    if (m_useJinja) {
-        auto res = ac2jsonChatMessages(chat);
-        jchat = std::move(res.first);
-        size = res.second;
-    } else {
-        auto res = ac2llamaChatMessages(chat);
-        lchat = std::move(res.first);
-        size = res.second;
-    }
-
-    if (size == 0) return {};
-
-    return m_useJinja ?
-        applyJinja(m_minjaTemplate.get(), jchat, addAssistantPrompt) :
-        applyLlama(m_templateStr, lchat, size, addAssistantPrompt);
+    return m_impl->formatChat(chat, addAssistantPrompt);
 }
 
 std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const {
-    if (history.empty()) {
-        return formatChat({&msg, 1}, addAssistantPrompt);
-    }
-
-    acnl::json jchat;
-    std::vector<llama_chat_message> lchat;
-    size_t size = 0;
-    if (m_useJinja) {
-        auto res = ac2jsonChatMessages(history);
-        jchat = std::move(res.first);
-        size = res.second;
-    } else {
-        auto res = ac2llamaChatMessages(history);
-        lchat = std::move(res.first);
-        size = res.second;
-    }
-
-    auto fmtHistory = m_useJinja ?
-        applyJinja(m_minjaTemplate.get(), jchat, false) :
-        applyLlama(m_templateStr, lchat, size, false);
-
-    std::string ret;
-
-    // if the formatted past messages end with a newline,
-    // we must preserve it
-    if (addAssistantPrompt && fmtHistory.ends_with('\n')) {
-        ret = "\n";
-    };
-
-    if (m_useJinja) {
-        jchat.push_back({
-            {"role", msg.role},
-            {"content", msg.text},
-        });
-    } else {
-        lchat.push_back({msg.role.c_str(), msg.text.c_str()});
-        size += msg.role.size() + msg.text.size();
-    }
-
-    auto fmtNew = m_useJinja ?
-        applyJinja(m_minjaTemplate.get(), jchat, addAssistantPrompt) :
-        applyLlama(m_templateStr, lchat, size, addAssistantPrompt);
-
-    // apply diff
-    ret += fmtNew.substr(fmtHistory.size());
-    return ret;
+    return m_impl->formatMsg(msg, history, addAssistantPrompt);
 }
 
 ChatFormat::Params getChatParams(const Model& model) {
@@ -213,6 +226,5 @@ ChatFormat::Params getChatParams(const Model& model) {
 
     return chatParams;
 }
-
 
 } // namespace ac::llama
