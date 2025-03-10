@@ -24,6 +24,7 @@ public:
         std::string eosToken;
     };
 
+    explicit ChatFormat(std::string templateStr);
     explicit ChatFormat(Params params);
 
     ~ChatFormat();
@@ -38,11 +39,11 @@ public:
     std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt = false);
 
 private:
-    std::string apply(std::span<const llama_chat_message> chat, size_t chatSize, bool addAssistantPrompt) const;
 
     std::string m_templateStr;
     int m_templateId;
     std::unique_ptr<minja::chat_template> m_minjaTemplate;
+    bool m_useJinja;
 };
 
 ChatFormat::Params getChatParams(const Model& model);
