@@ -43,7 +43,7 @@ public:
 
     virtual std::string formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const override{
         auto [lchat, size] = ac2llamaChatMessages(chat);
-        return size != 0 ? applyLlama(m_templateStr, lchat, size, addAssistantPrompt) : "";
+        return size != 0 ? applyLlama(lchat, size, addAssistantPrompt) : "";
     }
 
     virtual std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const override {
@@ -52,7 +52,7 @@ public:
         }
 
         auto [lchat, size] = ac2llamaChatMessages(history);
-        auto fmtHistory = applyLlama(m_templateStr, lchat, size, false);
+        auto fmtHistory = applyLlama(lchat, size, false);
 
         lchat.push_back({msg.role.c_str(), msg.text.c_str()});
         size += msg.role.size() + msg.text.size();
@@ -63,7 +63,7 @@ public:
             ret = "\n";
         };
 
-        auto fmtNew = applyLlama(m_templateStr, lchat, size, addAssistantPrompt);
+        auto fmtNew = applyLlama(lchat, size, addAssistantPrompt);
         return ret + fmtNew.substr(fmtHistory.size());
     }
 
@@ -82,18 +82,18 @@ private:
         return {lchat, size};
     }
 
-    std::string applyLlama(const std::string& templateStr, std::span<llama_chat_message> lchat, size_t size, bool addAssistantPrompt) const {
+    std::string applyLlama(std::span<llama_chat_message> lchat, size_t size, bool addAssistantPrompt) const {
         auto allocSize = (size * 5) / 4; // optimistic 25% more than the original size
         std::string fmt(allocSize, '\0');
 
         // run the first time and get the total output length
-        int32_t res = llama_chat_apply_template(templateStr.c_str(), lchat.data(), lchat.size(),
+        int32_t res = llama_chat_apply_template(m_templateStr.c_str(), lchat.data(), lchat.size(),
             addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
 
         if (res > int32_t(fmt.size())) {
             // optimistic size was not enough
             fmt.resize(res);
-            res = llama_chat_apply_template(templateStr.c_str(), lchat.data(), lchat.size(),
+            res = llama_chat_apply_template(m_templateStr.c_str(), lchat.data(), lchat.size(),
                 addAssistantPrompt, fmt.data(), int32_t(fmt.size()));
         }
 
@@ -124,7 +124,7 @@ public:
 
     virtual std::string formatChat(std::span<const ChatMsg> chat, bool /*addAssistantPrompt*/) const override {
         auto [jChat, size] = ac2jsonChatMessages(chat);
-        return size == 0 ? std::string{} : applyJinja(m_minjaTemplate.get(), jChat);
+        return size == 0 ? std::string{} : applyJinja(jChat);
     }
 
     virtual std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const override {
@@ -133,10 +133,10 @@ public:
         }
 
         auto [jchat, size] = ac2jsonChatMessages(history);
-        auto fmtHistory = applyJinja(m_minjaTemplate.get(), jchat);
+        auto fmtHistory = applyJinja(jchat);
 
         jchat.push_back({{"role", msg.role}, {"content", msg.text}});
-        auto fmtNew = applyJinja(m_minjaTemplate.get(), jchat);
+        auto fmtNew = applyJinja(jchat);
 
         return fmtNew.substr(fmtHistory.size());
     }
@@ -157,7 +157,7 @@ private:
         return {messages, size};
     }
 
-    std::string applyJinja(minja::chat_template* minjaTemplate, acnl::json jChat) const {
+    std::string applyJinja(acnl::json jChat) const {
         auto startsWith = [](const std::string& str, const std::string& prefix) {
             return str.rfind(prefix, 0) == 0;
         };
@@ -169,12 +169,12 @@ private:
         // To avoid double BOS / EOS tokens, we're manually removing begining / trailing tokens
         // instead of using `chat_template_options.use_bos_token = false`, since these tokens
         // may be needed inside the template / between messages too.
-        auto result = minjaTemplate->apply(tmpl_inputs, tmpl_opts);
-        if (startsWith(result, minjaTemplate->bos_token())) {
-            result = result.substr(minjaTemplate->bos_token().size());
+        auto result = m_minjaTemplate->apply(tmpl_inputs, tmpl_opts);
+        if (startsWith(result, m_minjaTemplate->bos_token())) {
+            result = result.substr(m_minjaTemplate->bos_token().size());
         }
-        if (startsWith(result, minjaTemplate->eos_token())) {
-            result = result.substr(0, result.size() - minjaTemplate->eos_token().size());
+        if (startsWith(result, m_minjaTemplate->eos_token())) {
+            result = result.substr(0, result.size() - m_minjaTemplate->eos_token().size());
         }
         return result;
     }
