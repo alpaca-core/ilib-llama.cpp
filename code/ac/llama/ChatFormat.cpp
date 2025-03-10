@@ -193,7 +193,9 @@ std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> h
 
 ChatFormat::Params getChatParams(const Model& model) {
     ChatFormat::Params chatParams;
-    chatParams.chatTemplate = llama_model_chat_template(model.lmodel(), nullptr);
+    if (auto tmpl = llama_model_chat_template(model.lmodel(), nullptr)) {
+        chatParams.chatTemplate = tmpl;
+    }
 
     const auto getTokenStr = [&](llama_token token, const char * name, const char * jinja_variable_name) {
         if (token == LLAMA_TOKEN_NULL) {
