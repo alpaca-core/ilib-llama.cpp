@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.24 FATAL_ERROR)
 
 project(ilib-llama.cpp
-    VERSION 0.1.0
+    VERSION 0.1.1
     DESCRIPTION "Example plugin for the Alpaca Core Local SDK"
     LANGUAGES CXX
 )
@@ -37,7 +37,7 @@ init_ac_plugin_option(LLAMA)
 #######################################
 # packages
 
-add_ac_local(0.1.18)
+add_ac_local(0.1.19)
 
 #######################################
 # submodule and config

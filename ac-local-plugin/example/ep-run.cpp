@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 #include <ac/local/Lib.hpp>
-#include <ac/local/IoCtx.hpp>
+#include <ac/local/DefaultBackend.hpp>
 #include <ac/schema/BlockingIoHelper.hpp>
 #include <ac/schema/FrameHelpers.hpp>
 
@@ -24,10 +24,8 @@ int main() try {
 
     ac::local::Lib::loadPlugin(ACLP_llama_PLUGIN_FILE);
 
-    ac::frameio::BlockingIoCtx blockingCtx;
-    ac::local::IoCtx io;
-    auto& llamaProvider = ac::local::Lib::getProvider("llama.cpp");
-    ac::schema::BlockingIoHelper llama(io.connect(llamaProvider), blockingCtx);
+    ac::local::DefaultBackend backend;
+    ac::schema::BlockingIoHelper llama(backend.connect("llama.cpp"));
 
     llama.expectState<schema::StateInitial>();
     llama.call<schema::StateInitial::OpLoadModel>({

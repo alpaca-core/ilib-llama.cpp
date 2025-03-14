@@ -11,8 +11,10 @@
 #include <ac/llama/LogitComparer.hpp>
 #include <ac/llama/ResourceCache.hpp>
 
-#include <ac/local/Provider.hpp>
-#include <ac/local/ProviderSessionContext.hpp>
+#include <ac/local/Service.hpp>
+#include <ac/local/ServiceFactory.hpp>
+#include <ac/local/ServiceInfo.hpp>
+#include <ac/local/Backend.hpp>
 
 #include <ac/schema/LlamaCpp.hpp>
 #include <ac/schema/OpDispatchHelpers.hpp>
@@ -615,22 +617,35 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resour
     }
 }
 
-class LlamaProvider final : public Provider {
-public:
-    virtual const Info& info() const noexcept override {
-        static Info i = {
-            .name = "ac llama.cpp",
-            .vendor = "Alpaca Core",
-        };
-        return i;
-    }
+ServiceInfo g_serviceInfo = {
+    .name = "ac llama.cpp",
+    .vendor = "Alpaca Core",
+};
 
+struct LlamaService final : public Service {
+    xec::strand gpuStrand;
     llama::ResourceCache m_resourceCache;
 
-    virtual void createSession(ProviderSessionContext ctx) override {
-        co_spawn(ctx.executor.cpu, Llama_runSession(std::move(ctx.endpoint.session), m_resourceCache));
+    virtual const ServiceInfo& info() const noexcept override {
+        return g_serviceInfo;
+    }
+
+    virtual void createSession(frameio::StreamEndpoint ep, std::string_view) override {
+        co_spawn(gpuStrand, Llama_runSession(std::move(ep), m_resourceCache));
     }
 };
+
+struct LlamaServiceFactory final : public ServiceFactory {
+    virtual const ServiceInfo& info() const noexcept override {
+        return g_serviceInfo;
+    }
+    virtual std::unique_ptr<Service> createService(const Backend& backend) const override {
+        auto svc = std::make_unique<LlamaService>();
+        svc->gpuStrand = backend.xctx().gpu;
+        return svc;
+    }
+};
+
 } // namespace
 
 } // namespace ac::local
@@ -641,10 +656,9 @@ void init() {
     initLibrary();
 }
 
-std::vector<ac::local::ProviderPtr> getProviders() {
-    std::vector<ac::local::ProviderPtr> ret;
-    ret.push_back(std::make_unique<local::LlamaProvider>());
-    return ret;
+std::vector<const local::ServiceFactory*> getFactories() {
+    static local::LlamaServiceFactory factory;
+    return {&factory};
 }
 
 local::PluginInterface getPluginInterface() {
@@ -656,7 +670,7 @@ local::PluginInterface getPluginInterface() {
             ACLP_llama_VERSION_MAJOR, ACLP_llama_VERSION_MINOR, ACLP_llama_VERSION_PATCH
         },
         .init = init,
-        .getProviders = getProviders,
+        .getServiceFactories = getFactories,
     };
 }
 
