@@ -502,22 +502,27 @@ static ReturnParams Params_fromSchema(Params& params) {
     return ret;
 }
 
-xec::coro<void> Llama_runModel(IoEndpoint& io, llama::Model& model) {
+xec::coro<void> Llama_runModel(IoEndpoint& io, llama::Model& model, std::span<const llama::ResourceCache::LoraLock> loras) {
     using Schema = sc::StateModelLoaded;
 
     struct Runner : public BasicRunner {
-        Runner(llama::Model& model)
-            : lmodel(model)
+        Runner(llama::Model& model, std::span<const llama::ResourceCache::LoraLock> loras)
+            : m_lmodel(model)
+            , m_loras(loras)
         {
             schema::registerHandlers<Schema::Ops>(m_dispatcherData, *this);
         }
 
-        llama::Model& lmodel;
+        llama::Model& m_lmodel;
+        std::span<const llama::ResourceCache::LoraLock> m_loras;
         std::unique_ptr<llama::Instance> instance;
         std::unique_ptr<llama::InstanceEmbedding> embeddingInstance;
 
         Schema::OpStartInstance::Return on(Schema::OpStartInstance, Schema::OpStartInstance::Params iParams) {
-            instance = std::make_unique<llama::Instance>(lmodel, Params_fromSchema<Schema::OpStartInstance::Params, llama::Instance::InitParams>(iParams));
+            instance = std::make_unique<llama::Instance>(m_lmodel, Params_fromSchema<Schema::OpStartInstance::Params, llama::Instance::InitParams>(iParams));
+            for (auto& lora : m_loras) {
+                instance->addLora(*lora, 1.f);
+            }
 
             auto ctrlVectors = iParams.ctrlVectorPaths.valueOr({});
             if (ctrlVectors.size()) {
@@ -525,7 +530,7 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, llama::Model& model) {
                 for (auto& path : ctrlVectors) {
                     ctrlloadInfo.push_back({ path, 2 });
                 }
-                ac::llama::ControlVector ctrl(lmodel, ctrlloadInfo);
+                ac::llama::ControlVector ctrl(m_lmodel, ctrlloadInfo);
                 instance->addControlVector(ctrl);
             }
 
@@ -533,7 +538,7 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, llama::Model& model) {
         }
 
         Schema::OpStartEmbeddingInstance::Return on(Schema::OpStartEmbeddingInstance, Schema::OpStartEmbeddingInstance::Params iParams) {
-            embeddingInstance = std::make_unique<llama::InstanceEmbedding>(lmodel, Params_fromSchema<Schema::OpStartEmbeddingInstance::Params, llama::InstanceEmbedding::InitParams>(iParams));
+            embeddingInstance = std::make_unique<llama::InstanceEmbedding>(m_lmodel, Params_fromSchema<Schema::OpStartEmbeddingInstance::Params, llama::InstanceEmbedding::InitParams>(iParams));
 
             return {};
         }
@@ -541,7 +546,7 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, llama::Model& model) {
 
     co_await io.push(Frame_stateChange(Schema::id));
 
-    Runner runner(model);
+    Runner runner(model, loras);
     while (true) {
         auto f = co_await io.poll();
         co_await io.push(runner.dispatch(*f));
@@ -570,7 +575,8 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resour
         }
 
         llama::ResourceCache& cache;
-        std::unique_ptr<llama::Model> model;
+        llama::ResourceCache::ModelLock model;
+        std::vector<llama::ResourceCache::LoraLock> loras;
 
         static llama::Model::Params ModelParams_fromSchema(sc::StateInitial::OpLoadModel::Params schemaParams) {
             llama::Model::Params ret;
@@ -582,14 +588,13 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resour
 
         Schema::OpLoadModel::Return on(Schema::OpLoadModel, Schema::OpLoadModel::Params params) {
             auto gguf = params.ggufPath.valueOr("");
-            auto loras = params.loraPaths.valueOr({});
+            auto loraPaths = params.loraPaths.valueOr({});
             auto lparams = ModelParams_fromSchema(params);
 
-            model.reset(new llama::Model(cache.getOrCreateModel(gguf, lparams, {}), lparams));
+            model = cache.getModel({.gguf = gguf, .params = lparams});
 
-            for(auto& loraPath: loras) {
-                auto lora = cache.getOrCreateLora(*model, loraPath);
-                model->addLora(lora);
+            for(auto& loraPath : loraPaths) {
+                loras.push_back(model->getLora({loraPath}));
             }
 
             return {};
@@ -608,7 +613,7 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resour
             auto f = co_await io.poll();
             co_await io.push(runner.dispatch(*f));
             if (runner.model) {
-                co_await Llama_runModel(io, *runner.model);
+                co_await Llama_runModel(io, *runner.model, runner.loras);
             }
         }
     }

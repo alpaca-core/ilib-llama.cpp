@@ -45,13 +45,13 @@ int main() try {
     };
 
     ac::llama::ResourceCache cache;
-    auto model = ac::llama::Model(cache.getOrCreateModel(modelGguf, modelParams, modelLoadProgressCallback), modelParams);
+    auto model = cache.getModel({.gguf = modelGguf, .params = {}}, modelLoadProgressCallback);
 
     // create inference instance
-    ac::llama::InstanceEmbedding instance(model, {});
+    ac::llama::InstanceEmbedding instance(*model, {});
 
     std::string prompt = "The main character in the story loved to eat pineapples.";
-    std::vector<ac::llama::Token> tokens = model.vocab().tokenize(prompt, true, true);
+    std::vector<ac::llama::Token> tokens = model->vocab().tokenize(prompt, true, true);
 
     auto embeddings = instance.getEmbeddingVector(tokens);
 

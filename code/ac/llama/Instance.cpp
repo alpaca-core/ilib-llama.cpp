@@ -49,16 +49,17 @@ Instance::Instance(Model& model, InitParams params)
     if (ctxLen > ctxTrain) {
         LLAMA_LOG(Warning, "Instance requested context length ", ctxLen, " is greater than the model's training context length ", ctxTrain);
     }
-
-    llama_clear_adapter_lora(m_lctx.get());
-    for (auto & la : model.loras()) {
-        if (la.scale() != 0.0f) {
-            llama_set_adapter_lora(m_lctx.get(), la.adapter(), la.scale());
-        }
-    }
 }
 
 Instance::~Instance() = default;
+
+void Instance::addLora(LoraAdapter& lora, float scale) {
+    llama_set_adapter_lora(m_lctx.get(), lora.ladapter(), scale);
+}
+
+void Instance::clearLoraState() {
+    llama_clear_adapter_lora(m_lctx.get());
+}
 
 namespace {
 llama_batch makeInputBatch(std::span<const Token> tokens) {

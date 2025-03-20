@@ -6,7 +6,6 @@
 #include <ac/llama/Instance.hpp>
 #include <ac/llama/Session.hpp>
 #include <ac/llama/AntipromptManager.hpp>
-#include <ac/llama/ResourceCache.hpp>
 
 #include <ImGuiSdlApp.hpp>
 #include <imgui_stdlib.h>
@@ -49,8 +48,6 @@ void printModelLoadProgress(float progress) {
     }
 };
 
-ac::llama::ResourceCache g_resourceCache;
-
 // unloadable model
 class UModel {
 public:
@@ -64,7 +61,7 @@ public:
     class State {
     public:
         State(const std::string& ggufPath, const ac::llama::Model::Params& modelParams)
-            : m_model(ac::llama::Model(g_resourceCache.getOrCreateModel(ggufPath, modelParams, printModelLoadProgress), modelParams))
+            : m_model(ggufPath, modelParams, printModelLoadProgress)
         {}
 
         class Instance {

@@ -14,6 +14,7 @@ namespace ac::llama {
 class Model;
 class Session;
 class StringSession;
+class LoraAdapter;
 class ControlVector;
 
 class AC_LLAMA_EXPORT Instance {
@@ -28,6 +29,10 @@ public:
 
     explicit Instance(Model& model, InitParams params);
     ~Instance();
+
+    void addLora(LoraAdapter& lora, float scale = 1.f);
+
+    void clearLoraState();
 
     // add control to the context
     void addControlVector(const ControlVector& ctrlVector);

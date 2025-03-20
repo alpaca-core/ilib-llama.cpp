@@ -34,7 +34,6 @@ int main() try {
     // std::string ctrlVectorGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6-control_vector.gguf";
     std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/../../../tmp/llava-llama-3-8b-v1_1-f16.gguf";
     std::string loraGguf = AC_TEST_DATA_LLAMA_DIR "/../../../tmp/Llama-3-Instruct-abliteration-LoRA-8B-f16.gguf";
-    ac::llama::Model::Params modelParams;
     auto modelLoadProgressCallback = [](float progress) {
         const int barWidth = 50;
         static float currProgress = 0;
@@ -50,12 +49,12 @@ int main() try {
     };
 
     ac::llama::ResourceCache cache;
-    auto model = ac::llama::Model(cache.getOrCreateModel(modelGguf, modelParams, modelLoadProgressCallback), modelParams);
-    auto lora = cache.getOrCreateLora(model, loraGguf);
-    model.addLora(ac::llama::LoraAdapter(lora));
+    auto model = cache.getModel({.gguf = modelGguf, .params = {}}, modelLoadProgressCallback);
+    auto lora = model->getLora({loraGguf});
 
     // create inference instance
-    ac::llama::Instance instance(model, {});
+    ac::llama::Instance instance(*model, {});
+    instance.addLora(*lora, 1.f);
 
     // To add control vector uncomment the following lines
     // ac::llama::ControlVector ctrlVector(model, {{ctrlVectorGguf, 2.f}});
@@ -66,7 +65,7 @@ int main() try {
 
     // start session
     auto& session = instance.startSession({});
-    session.setInitialPrompt(model.vocab().tokenize(prompt, true, true));
+    session.setInitialPrompt(model->vocab().tokenize(prompt, true, true));
 
     // generate and print 100 tokens
     for (int i = 0; i < 100; ++i) {
@@ -75,7 +74,7 @@ int main() try {
             // no more tokens
             break;
         }
-        std::cout << model.vocab().tokenToString(token);
+        std::cout << model->vocab().tokenToString(token);
     }
     std::cout << '\n';
 

@@ -87,7 +87,7 @@ void normalizeEmbedding(const float * inp, float * out, int n, int embd_norm) {
             break;
     }
 
-    const float norm = sum > 0.0 ? 1.0 / sum : 0.0f;
+    const float norm = sum > 0.0 ? float(1.0 / sum) : 0.0f;
 
     for (int i = 0; i < n; i++) {
         out[i] = inp[i] * norm;
@@ -97,7 +97,7 @@ void normalizeEmbedding(const float * inp, float * out, int n, int embd_norm) {
 void batchAddSeq(llama_batch& batch, std::span<const Token> tokens, llama_seq_id seq_id) {
     for (size_t i = 0; i < tokens.size(); i++) {
         batch.token   [batch.n_tokens] = tokens[i];
-        batch.pos     [batch.n_tokens] = i;
+        batch.pos     [batch.n_tokens] = llama_pos(i);
         batch.n_seq_id[batch.n_tokens] = 1;
         batch.seq_id[batch.n_tokens][0] = seq_id;
         batch.logits  [batch.n_tokens] = true;

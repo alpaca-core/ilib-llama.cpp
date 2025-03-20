@@ -5,11 +5,6 @@
 #include "export.h"
 #include "Vocab.hpp"
 
-#include "LoraAdapter.hpp"
-
-#include <ac/local/Resource.hpp>
-#include <ac/local/ResourceLock.hpp>
-
 #include <astl/mem_ext.hpp>
 #include <astl/ufunction.hpp>
 
@@ -35,14 +30,10 @@ public:
         bool vocabOnly = false; // do not load model, only vocab
         bool prefixInputsWithBos = false; // add bos token to interactive inputs (#13)
 
-        bool operator==(const Params& other) const noexcept {
-            return gpu == other.gpu
-                    && vocabOnly == other.vocabOnly
-                    && prefixInputsWithBos == other.prefixInputsWithBos;
-        }
+        bool operator==(const Params& other) const noexcept = default;
     };
 
-    Model(local::ResourceLock<LlamaModelResource> model, Params params);
+    Model(const std::string& gguf, Params params, ModelLoadProgressCb pcb = {});
     ~Model();
 
     const Params& params() const noexcept { return m_params; }
@@ -55,25 +46,15 @@ public:
     // fallback to "chatml" if the underlying model does not provide a chat template
     std::string getChatTemplateId() const;
 
-    llama_model* lmodel() noexcept;
-    const llama_model* lmodel() const noexcept;
-
-    void addLora(LoraAdapter lora) noexcept { m_loras.push_back(lora); }
-    std::span<LoraAdapter> loras() noexcept { return std::span<LoraAdapter>(m_loras); }
+    llama_model* lmodel() noexcept { return m_lmodel.get(); }
+    const llama_model* lmodel() const noexcept { return m_lmodel.get(); }
 
     const Vocab& vocab() const noexcept { return m_vocab; }
 private:
     const Params m_params;
-    local::ResourceLock<LlamaModelResource> m_model;
-    std::vector<LoraAdapter> m_loras;
+    astl::c_unique_ptr<llama_model> m_lmodel;
 
     Vocab m_vocab{*this};
-};
-
-struct LlamaModelResource : public local::Resource {
-    LlamaModelResource(std::string gguf, Model::Params params, ModelLoadProgressCb pcb);
-
-    astl::c_unique_ptr<llama_model> m_model;
 };
 
 } // namespace ac::llama

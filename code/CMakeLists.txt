@@ -45,5 +45,4 @@ target_sources(ac-llama
         ac/llama/ControlVector.cpp
         ac/llama/LoraAdapter.cpp
         ac/llama/LogitComparer.cpp
-        ac/llama/ResourceCache.cpp
 )

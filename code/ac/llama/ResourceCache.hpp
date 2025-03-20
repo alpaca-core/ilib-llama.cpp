@@ -9,28 +9,50 @@
 
 namespace ac::llama {
 
-struct ModelKey {
-    std::string gguf;
-    Model::Params params;
-
-    bool operator==(const ModelKey& other) const noexcept = default;
-};
-
-struct LoraKey {
-    llama_model* model;
-    std::string path;
-
-    bool operator==(const LoraKey& other) const noexcept = default;
-};
-
-class AC_LLAMA_EXPORT ResourceCache {
+class ResourceCache {
 public:
-    local::ResourceLock<LlamaModelResource> getOrCreateModel(std::string_view gguf, Model::Params params, ModelLoadProgressCb pcb);
-    local::ResourceLock<LLamaLoraResource> getOrCreateLora(Model& model, std::string_view loraPath);
+    struct LoraParams {
+        std::string path;
+        bool operator==(const LoraParams& other) const noexcept = default;
+    };
+    struct LoraResource : public LoraAdapter, public local::Resource {
+        using LoraAdapter::LoraAdapter;
+    };
+
+    using LoraLock = local::ResourceLock<LoraResource>;
+
+    struct ModelParams {
+        std::string gguf;
+        Model::Params params;
+        bool operator==(const ModelParams& other) const noexcept = default;
+    };
+
+    class ModelResource : public Model, public local::Resource {
+    public:
+        ModelResource(const ModelParams& params, ModelLoadProgressCb pcb)
+            : Model(params.gguf, params.params, std::move(pcb))
+        {}
+
+        LoraLock getLora(LoraParams params) {
+            return m_loras.findOrCreate(std::move(params), [&](const LoraParams& key) {
+                return std::make_shared<LoraResource>(*this, key.path);
+            });
+        }
+    private:
+        local::ResourceManager<LoraParams, LoraResource> m_loras;
+    };
+
+    using ModelLock = local::ResourceLock<ModelResource>;
+
+    ModelLock getModel(ModelParams params, ModelLoadProgressCb pcb = {}) {
+        return m_modelManager.findOrCreate(std::move(params), [&](const ModelParams& key) {
+            return std::make_shared<ModelResource>(key, std::move(pcb));
+        });
+    }
 
 private:
-    local::ResourceManager<ModelKey> m_modelsManager;
-    local::ResourceManager<LoraKey> m_lorasManager;
+    local::ResourceManager<ModelParams, ModelResource> m_modelManager;
+
 };
 
 }
