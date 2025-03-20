@@ -54,6 +54,9 @@ Instance::Instance(Model& model, InitParams params)
 Instance::~Instance() = default;
 
 void Instance::addLora(LoraAdapter& lora, float scale) {
+    if (lora.model().lmodel() != m_model.lmodel()) {
+        throw_ex{} << "LoraAdapter model does not match the instance model";
+    }
     llama_set_adapter_lora(m_lctx.get(), lora.ladapter(), scale);
 }
 
