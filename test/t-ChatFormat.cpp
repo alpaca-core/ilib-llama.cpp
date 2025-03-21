@@ -381,9 +381,12 @@ TEST_CASE("getChatParams") {
     ac::llama::ResourceCache resourceCache;
     const char* Model_117m_q6_k = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
     ac::llama::Model::Params iParams = { .vocabOnly = true };
-    auto model = ac::llama::Model(resourceCache.getOrCreateModel(Model_117m_q6_k, iParams, {}), iParams);
-    CHECK(!!model.lmodel());
-    auto chatParams = ac::llama::getChatParams(model);
+    auto model = resourceCache.getModel({
+        .gguf = Model_117m_q6_k,
+        .params = iParams,
+    });
+    CHECK(!!model->lmodel());
+    auto chatParams = ac::llama::getChatParams(*model);
 
     CHECK(chatParams.chatTemplate == "");
     CHECK(chatParams.bosToken == "<|endoftext|>");
