@@ -128,6 +128,7 @@ public:
             out.write(reinterpret_cast<const char*>(&idx), sizeof(idx));
             content.write(out);
         }
+        out.close();
     }
 
     void loadIndex(const std::string& location) {
@@ -140,9 +141,13 @@ public:
             int idx;
             T content;
             in.read(reinterpret_cast<char*>(&idx), sizeof(idx));
+            if (in.eof()) {
+                break;
+            }
             content.read(in);
             m_documents[idx] = content;
         }
+        in.close();
     }
 
 private:
@@ -160,7 +165,7 @@ struct Document {
         size_t strSize = content.size();
 
         out.write(reinterpret_cast<const char*>(&strSize), sizeof(strSize));
-        out.write(content.data(), content.size() * sizeof(char));
+        out.write(content.data(), strSize * sizeof(char));
     }
 
     void read(std::istream& in) {
