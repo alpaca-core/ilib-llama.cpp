@@ -243,9 +243,9 @@ int main() try {
     // initialize the library
     ac::llama::initLibrary();
 
-    // load model
-    // std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
-    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/../../../tmp/llava-llama-3-8b-v1_1-f16.gguf";
+    // This model won't work for this example, but it's a placeholder
+    // Download better model - llama3.2 8b for example
+    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
     std::string embeddingModelGguf = AC_TEST_DATA_LLAMA_DIR "/bge-small-en-v1.5-f16.gguf";
     auto modelLoadProgressCallback = [](float progress) {
         const int barWidth = 50;
