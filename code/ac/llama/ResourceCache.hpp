@@ -5,12 +5,16 @@
 #include "Model.hpp"
 #include "LoraAdapter.hpp"
 
-#include <ac/local/ResourceManager.hpp>
+#include <ac/local/ResourceCache.hpp>
 
 namespace ac::llama {
 
 class ResourceCache {
 public:
+    ResourceCache(local::ResourceManager& rm)
+        : m_modelCache(rm)
+    {}
+
     struct LoraParams {
         std::string path;
         bool operator==(const LoraParams& other) const noexcept = default;
@@ -29,8 +33,9 @@ public:
 
     class ModelResource : public Model, public local::Resource {
     public:
-        ModelResource(const ModelParams& params, ModelLoadProgressCb pcb)
+        ModelResource(local::ResourceManager& rm, const ModelParams& params, ModelLoadProgressCb pcb)
             : Model(params.gguf, params.params, std::move(pcb))
+            , m_loras(rm)
         {}
 
         LoraLock getLora(LoraParams params) {
@@ -39,19 +44,19 @@ public:
             });
         }
     private:
-        local::ResourceManager<LoraParams, LoraResource> m_loras;
+        local::ResourceCache<LoraParams, LoraResource> m_loras;
     };
 
     using ModelLock = local::ResourceLock<ModelResource>;
 
     ModelLock getModel(ModelParams params, ModelLoadProgressCb pcb = {}) {
-        return m_modelManager.findOrCreate(std::move(params), [&](const ModelParams& key) {
-            return std::make_shared<ModelResource>(key, std::move(pcb));
+        return m_modelCache.findOrCreate(std::move(params), [&](const ModelParams& key) {
+            return std::make_shared<ModelResource>(m_modelCache.manager(), key, std::move(pcb));
         });
     }
 
 private:
-    local::ResourceManager<ModelParams, ModelResource> m_modelManager;
+    local::ResourceCache<ModelParams, ModelResource> m_modelCache;
 
 };
 

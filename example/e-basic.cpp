@@ -48,7 +48,8 @@ int main() try {
         return true;
     };
 
-    ac::llama::ResourceCache cache;
+    ac::local::ResourceManager rm;
+    ac::llama::ResourceCache cache(rm);
     auto model = cache.getModel({.gguf = modelGguf, .params = {}}, modelLoadProgressCallback);
     auto lora = model->getLora({loraGguf});
 

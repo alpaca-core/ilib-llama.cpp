@@ -25,7 +25,7 @@ int main() try {
     ac::local::Lib::loadPlugin(ACLP_llama_PLUGIN_FILE);
 
     ac::local::DefaultBackend backend;
-    ac::schema::BlockingIoHelper llama(backend.connect("llama.cpp"));
+    ac::schema::BlockingIoHelper llama(backend.connect("llama.cpp", {}));
 
     llama.expectState<schema::StateInitial>();
     llama.call<schema::StateInitial::OpLoadModel>({

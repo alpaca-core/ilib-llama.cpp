@@ -15,6 +15,7 @@
 #include <ac/local/ServiceFactory.hpp>
 #include <ac/local/ServiceInfo.hpp>
 #include <ac/local/Backend.hpp>
+#include <ac/local/BackendWorkerStrand.hpp>
 
 #include <ac/schema/LlamaCpp.hpp>
 #include <ac/schema/OpDispatchHelpers.hpp>
@@ -628,15 +629,17 @@ ServiceInfo g_serviceInfo = {
 };
 
 struct LlamaService final : public Service {
-    xec::strand gpuStrand;
-    llama::ResourceCache m_resourceCache;
+    LlamaService(BackendWorkerStrand& ws) : m_workerStrand(ws) {}
+
+    BackendWorkerStrand& m_workerStrand;
+    llama::ResourceCache m_resourceCache{m_workerStrand.resourceManager};
 
     virtual const ServiceInfo& info() const noexcept override {
         return g_serviceInfo;
     }
 
-    virtual void createSession(frameio::StreamEndpoint ep, std::string_view) override {
-        co_spawn(gpuStrand, Llama_runSession(std::move(ep), m_resourceCache));
+    virtual void createSession(frameio::StreamEndpoint ep, Dict) override {
+        co_spawn(m_workerStrand.executor(), Llama_runSession(std::move(ep), m_resourceCache));
     }
 };
 
@@ -644,9 +647,8 @@ struct LlamaServiceFactory final : public ServiceFactory {
     virtual const ServiceInfo& info() const noexcept override {
         return g_serviceInfo;
     }
-    virtual std::unique_ptr<Service> createService(const Backend& backend) const override {
-        auto svc = std::make_unique<LlamaService>();
-        svc->gpuStrand = backend.xctx().gpu;
+    virtual std::unique_ptr<Service> createService(Backend& backend) const override {
+        auto svc = std::make_unique<LlamaService>(backend.gpuWorkerStrand());
         return svc;
     }
 };

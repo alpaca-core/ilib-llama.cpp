@@ -20,7 +20,8 @@ struct GlobalFixture {
 };
 
 GlobalFixture globalFixture;
-ac::llama::ResourceCache resourceCache;
+ac::local::ResourceManager rm;
+ac::llama::ResourceCache resourceCache(rm);
 
 const char* Model_117m_q6_k = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
 
