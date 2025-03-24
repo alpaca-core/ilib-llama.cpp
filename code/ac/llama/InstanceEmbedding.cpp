@@ -107,7 +107,7 @@ void batchAddSeq(llama_batch& batch, std::span<const Token> tokens, llama_seq_id
 }
 }
 
-std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> prompt, int32_t normalization) {
+std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> prompt, int32_t normalization) const {
     const enum llama_pooling_type pooling_type = llama_pooling_type(m_lctx.get());
     llama_context* ctx = m_lctx.get();
     llama_model* model = m_model.lmodel();
@@ -158,6 +158,10 @@ std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> 
     }
 
     return embeddings;
+}
+
+uint32_t InstanceEmbedding::embeddingDim() const noexcept {
+     return llama_model_n_embd(m_model.lmodel());
 }
 
 } // namespace ac::llama

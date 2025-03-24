@@ -34,7 +34,10 @@ public:
     // Get the embedding vector for the given prompt
     // the normalization parameter is used to normalize the embeddings
     // values are (-1=none, 0=max absolute int16, 1=taxicab, 2=euclidean[default], >2=p-norm)
-    std::vector<float> getEmbeddingVector(std::span<const Token> prompt, int32_t normalization = 2);
+    std::vector<float> getEmbeddingVector(std::span<const Token> prompt, int32_t normalization = 2) const;
+
+    // Get the embedding dimension
+    uint32_t embeddingDim() const noexcept;
 
     const Model& model() const noexcept { return m_model; }
     Sampler& sampler() noexcept { return m_sampler; }
