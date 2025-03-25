@@ -26,12 +26,7 @@
 #include <iostream>
 #include <string>
 
-std::vector<std::string> g_fruits = {
-    "Apple", "Banana", "Orange", "Strawberry", "Blueberry", "Raspberry", "Blackberry", "Pineapple",
-    "Mango", "Peach", "Plum", "Cherry", "Grapes", "Watermelon", "Cantaloupe", "Honeydew", "Kiwi",
-    "Pomegranate", "Papaya", "Fig", "Dragon Fruit", "Lychee", "Coconut", "Guava", "Passion Fruit",
-    "Lemon", "Lime", "Pear", "Cranberry", "Apricot"
-};
+
 
 std::vector<std::pair<std::string, std::string>> g_recipes = {
     {"Apple Banana", "Apple Banana Smoothie: Blend 1 apple, 1 banana, 1 cup milk, and 1 tbsp honey until smooth."},
@@ -159,6 +154,9 @@ private:
 
 };
 
+// This is a simple object for storing a document
+// You can modify it to store custom information if it's needed
+// Note: Do not forget to implement the write and read functions for your custom object
 struct Document {
     std::string content;
     void write(std::ostream& out) const {
@@ -176,39 +174,50 @@ struct Document {
     }
 };
 
+std::string retrieveKnowledge(const std::string& query, VectorDatabase<Document>& vdb) {
+    // Search for the most relevant recipes
+    // in the vector database
+    int k = 3;  // Retrieve top-3 results
+    std::vector<float> seachEmbedding = g_embeddingInstance->getEmbeddingVector(g_embeddingInstance->model().vocab().tokenize(query, true, true));
+    auto results = vdb.searchKnn(seachEmbedding, k);
+
+    std::string knowledgeContent = "";
+
+    int cnt = 1;
+    std::cout << "============= database context =============\n";
+    while (!results.empty()) {
+        auto res = results.top();
+            std::cout << "\t" << cnt << "."
+                    << " Distance: " << res.dist
+                    << " ID:"         << res.idx
+                    << " content: "   << res.content.content
+                    << std::endl;
+                    results.pop();
+        knowledgeContent += std::to_string(cnt++) + ": " + res.content.content + "\n";
+    }
+    std::cout << "=============================================\n";
+
+    return knowledgeContent;
+}
+
 std::string generateResponse(ac::llama::Session& session, const std::string& prompt, VectorDatabase<Document>& vdb, int maxTokens = 512) {
     ac::llama::ChatFormat chatFormat("llama3");
     ac::llama::ChatMsg msg{.text = prompt, .role = "user"};
 
-    {
-        // Search for the most relevant recipe
-        // in the vector database
-        int k = 3;  // Retrieve top-3 results
-        std::vector<float> seachEmbedding = g_embeddingInstance->getEmbeddingVector(g_embeddingInstance->model().vocab().tokenize(prompt, true, true));
-        auto result = vdb.searchKnn(seachEmbedding, k);
+    // 1. Fill the context with the relevant recipes
+    const std::string systemPrompt = "You are a recipe assistant. Given the following relevant recipes, select the most relevant one or paraphrase it:\n";
+    const std::string knowledge = retrieveKnowledge(prompt, vdb);
+    session.pushPrompt(g_chatInstance->model().vocab().tokenize(systemPrompt + knowledge, false, false));
 
-        std::string knowledge = "You are a recipe assistant. Given the following relevant recipes, select the most relevant one or paraphrase it:\n";
-        std::cout << "Nearest neighbors:\n";
-        int cnt = 1;
-        while (!result.empty()) {
-            auto res = result.top();
-             std::cout<<"\tDistance: " << res.dist
-                        << " ID:" << res.idx
-                        << " content: " << res.content.content << std::endl;
-            result.pop();
-            knowledge += std::to_string(cnt++) + ": " + res.content.content + "\n";
-        }
-
-        session.pushPrompt(g_chatInstance->model().vocab().tokenize(knowledge, false, false));
-    }
-
+    // 2. Add the user prompt to the context
     auto formatted = chatFormat.formatMsg(msg, g_messages, true);
     g_messages.emplace_back(msg);
-    // auto formatted = chatFormat.formatChat(g_messages, true);
+    // Note: To format the full chat and push it into the context uncomment the following line
+    // formatted = chatFormat.formatChat(g_messages, true);
     session.pushPrompt(g_chatInstance->model().vocab().tokenize(formatted, false, false));
 
+    // 3. Generate the response
     std::string response = "";
-
     for (int i = 0; i < maxTokens; ++i) {
         auto token = session.getToken();
         if (token == ac::llama::Token_Invalid) {
@@ -243,32 +252,20 @@ int main() try {
     // initialize the library
     ac::llama::initLibrary();
 
-    // This model won't work for this example, but it's a placeholder
-    // Download better model - llama3.2 8b for example
+    // Note: This model won't work for this example, but it's a placeholder.
+    //       Download better model - llama3.2 8b for example
     std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
     std::string embeddingModelGguf = AC_TEST_DATA_LLAMA_DIR "/bge-small-en-v1.5-f16.gguf";
-    auto modelLoadProgressCallback = [](float progress) {
-        const int barWidth = 50;
-        static float currProgress = 0;
-        auto delta = int(progress * barWidth) - int(currProgress * barWidth);
-        for (int i = 0; i < delta; i++) {
-            std::cout.put('=');
-        }
-        currProgress = progress;
-        if (progress == 1.f) {
-            std::cout << '\n';
-        }
-        return true;
-    };
 
     ac::llama::ResourceCache cache;
-    // create inference objects
-    auto model = cache.getModel({.gguf = modelGguf, .params = {}}, modelLoadProgressCallback);
+
+    // create objects for the inference
+    auto model = cache.getModel({.gguf = modelGguf});
     ac::llama::Instance instance(*model, {});
     g_chatInstance = &instance;
 
-    // create embedding objects
-    auto mEmbedding = cache.getModel({.gguf = embeddingModelGguf, .params = {}}, modelLoadProgressCallback);
+    // create objects for the embedding
+    auto mEmbedding = cache.getModel({.gguf = embeddingModelGguf});
     ac::llama::InstanceEmbedding iEmbedding(*mEmbedding, {});
     g_embeddingInstance = &iEmbedding;
 
