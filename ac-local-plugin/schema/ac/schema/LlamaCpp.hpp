@@ -3,7 +3,8 @@
 //
 #pragma once
 #include <ac/schema/Field.hpp>
-#include <ac/Dict.hpp>
+#include <ac/schema/Progress.hpp>
+#include <ac/schema/StateChange.hpp>
 #include <vector>
 #include <string>
 #include <tuple>
@@ -12,15 +13,21 @@ namespace ac::schema {
 
 inline namespace llama {
 
-struct StateInitial {
-    static constexpr auto id = "initial";
+struct StreamToken {
+    static constexpr auto id = "token";
+    static constexpr auto desc = "Token stream";
+    using Type = std::string;
+};
+
+struct StateLlama {
+    static constexpr auto id = "llama.cpp";
     static constexpr auto desc = "Initial state";
 
     struct OpLoadModel {
         static constexpr auto id = "load-model";
         static constexpr auto desc = "Load the llama.cpp model";
 
-        struct Params{
+        struct Params {
             Field<std::string> ggufPath;
             Field<std::vector<std::string>> loraPaths = Default();
             Field<bool> useGpu = Default(true);
@@ -38,92 +45,79 @@ struct StateInitial {
             }
         };
 
-        using Return = nullptr_t;
+        using Return = StateChange;
+
+        using Ins = std::tuple<>;
+        using Outs = std::tuple<sys::Progress>;
     };
 
     using Ops = std::tuple<OpLoadModel>;
-    using Ins = std::tuple<>;
-    using Outs = std::tuple<>;
 };
 
 struct StateModelLoaded {
     static constexpr auto id = "model-loaded";
     static constexpr auto desc = "Model loaded state";
 
+    struct InstanceParams {
+        Field<std::string> instanceType = Default("general");
+
+        Field<uint32_t> ctxSize = Default(0);
+        Field<uint32_t> batchSize = Default(2048);
+        Field<uint32_t> ubatchSize = Default(512);
+
+        Field<std::vector<std::string>> ctrlVectorPaths = Default();
+
+        Field<std::string> setup = Default();
+        Field<std::string> roleUser = Default("User");
+        Field<std::string> roleAssistant = Default("Assistant");
+
+        template <typename Visitor>
+        void visitFields(Visitor& v) {
+            v(instanceType, "instance_type", "Type of the instance to start");
+            v(ctxSize, "ctx_size", "Size of the context");
+            v(batchSize, "batch_size", "Size of the single batch");
+            v(ubatchSize, "ubatch_size", "Size of the context");
+            v(ctrlVectorPaths, "ctrl-vectors", "Paths to the control vectors.");
+            v(setup, "setup", "Initial setup for the chat session");
+            v(roleUser, "role_user", "Role name for the user");
+            v(roleAssistant, "role_assistant", "Role name for the assistant");
+        }
+    };
+
     struct OpStartInstance {
         static constexpr auto id = "start-instance";
         static constexpr auto desc = "Start a new instance of the llama.cpp model";
 
-        struct Params {
-            Field<std::string> instanceType = Default("general");
-            Field<std::vector<std::string>> ctrlVectorPaths = Default();
-            Field<uint32_t> ctxSize = Default(0);
-            Field<uint32_t> batchSize = Default(2048);
-            Field<uint32_t> ubatchSize = Default(512);
-
-            template <typename Visitor>
-            void visitFields(Visitor& v) {
-                v(instanceType, "instance_type", "Type of the instance to start");
-                v(ctrlVectorPaths, "ctrl-vectors", "Paths to the control vectors.");
-                v(ctxSize, "ctx_size", "Size of the context");
-                v(batchSize, "batch_size", "Size of the single batch");
-                v(ubatchSize, "ubatch_size", "Size of the context");
-            }
-        };
-
-        using Return = nullptr_t;
+        using Params = InstanceParams;
+        using Return = StateChange;
     };
 
-    struct OpStartEmbeddingInstance {
-        static constexpr auto id = "start-embedding-instance";
-        static constexpr auto desc = "Start a new embedding instance of the llama.cpp model";
+    using Ops = std::tuple<OpStartInstance>;
 
-        struct Params {
-            Field<std::string> instanceType = Default("general");
-            Field<uint32_t> ctxSize = Default(0);
-            Field<uint32_t> batchSize = Default(2048);
-            Field<uint32_t> ubatchSize = Default(512);
-
-            template <typename Visitor>
-            void visitFields(Visitor& v) {
-                v(instanceType, "instance_type", "Type of the instance to start");
-                v(ctxSize, "ctx_size", "Size of the context");
-                v(batchSize, "batch_size", "Size of the single batch");
-                v(ubatchSize, "ubatch_size", "Size of the context");
-            }
-        };
-
-        using Return = nullptr_t;
-    };
-
-    using Ops = std::tuple<OpStartInstance, OpStartEmbeddingInstance>;
-    using Ins = std::tuple<>;
-    using Outs = std::tuple<>;
 };
 
-struct StateInstance {
-    static constexpr auto id = "instance";
-    static constexpr auto desc = "Instance state";
+struct StateGeneralInstance {
+    static constexpr auto id = "general-instance";
+    static constexpr auto desc = "General Instance state";
+
+    struct InferenceParams {
+        Field<std::string> prompt;
+        Field<std::vector<std::string>> antiprompts = Default();
+        Field<uint32_t> maxTokens = Default(0);
+
+        template <typename Visitor>
+        void visitFields(Visitor& v) {
+            v(prompt, "prompt", "Prompt to complete");
+            v(antiprompts, "antiprompts", "Antiprompts to trigger stop");
+            v(maxTokens, "max_tokens", "Maximum number of tokens to generate. 0 for unlimited");
+        }
+    };
 
     struct OpRun {
         static inline constexpr std::string_view id = "run";
         static inline constexpr std::string_view desc = "Run the llama.cpp inference and produce some output";
 
-        struct Params {
-            Field<std::string> prompt;
-            Field<std::vector<std::string>> antiprompts = Default();
-            Field<uint32_t> maxTokens = Default(0);
-            Field<bool> stream = Default(true);
-
-            template <typename Visitor>
-            void visitFields(Visitor& v) {
-                v(prompt, "prompt", "Prompt to complete");
-                v(antiprompts, "antiprompts", "Antiprompts to trigger stop");
-                v(maxTokens, "max_tokens", "Maximum number of tokens to generate. 0 for unlimited");
-                v(stream, "stream", "Stream the output");
-            }
-        };
-
+        using Params = InferenceParams;
         struct Return {
             Field<std::string> result;
 
@@ -132,6 +126,15 @@ struct StateInstance {
                 v(result, "result", "Generated result (completion of prompt)");
             }
         };
+    };
+
+    struct OpStream {
+        static inline constexpr std::string_view id = "stream";
+        static inline constexpr std::string_view desc = "Run the llama.cpp inference and produce some output";
+
+        using Params = InferenceParams;
+        using Return = nullptr_t;
+        using Outs = std::tuple<StreamToken>;
     };
 
     struct OpGetTokenData {
@@ -186,72 +189,14 @@ struct StateInstance {
         };
     };
 
-    struct OpChatBegin {
-        static inline constexpr std::string_view id = "begin-chat";
-        static inline constexpr std::string_view desc = "Begin a chat session";
-
-        struct Params {
-            Field<std::string> setup = Default();
-            Field<std::string> roleUser = Default("User");
-            Field<std::string> roleAssistant = Default("Assistant");
-
-            template <typename Visitor>
-            void visitFields(Visitor& v) {
-                v(setup, "setup", "Initial setup for the chat session");
-                v(roleUser, "role_user", "Role name for the user");
-                v(roleAssistant, "role_assistant", "Role name for the assistant");
-            }
-        };
-
-        using Return = nullptr_t;
-    };
-
-    struct OpStopInstance {
-        static inline constexpr std::string_view id = "stop-instance";
-        static inline constexpr std::string_view desc = "Stop the current instance";
-
-        using Params = nullptr_t;
-        using Return = nullptr_t;
-    };
-
-    using Ops = std::tuple<OpRun, OpGetTokenData, OpCompareTokenData, OpChatBegin, OpStopInstance>;
+    using Ops = std::tuple<OpRun, OpGetTokenData, OpCompareTokenData>;
     using Ins = std::tuple<>;
     using Outs = std::tuple<>;
 };
 
-struct StateStreaming {
-    static constexpr auto id = "streaming";
-    static constexpr auto desc = "Streaming state";
-
-    struct OpAbort {
-        static constexpr auto id = "abort";
-        static constexpr auto desc = "Abort the streaming";
-        using Params = nullptr_t;
-        using Return = nullptr_t;
-    };
-
-    struct StreamToken {
-        static constexpr auto id = "token";
-        static constexpr auto desc = "Token stream";
-        using Type = std::string;
-    };
-
-    using Ops = std::tuple<OpAbort>;
-    using Ins = std::tuple<>;
-    using Outs = std::tuple<StreamToken>;
-};
-
-struct StateChat {
-    static constexpr auto id = "chat";
+struct StateChatInstance {
+    static constexpr auto id = "chat-instance";
     static constexpr auto desc = "Chat state";
-
-    struct OpChatEnd {
-        static inline constexpr std::string_view id = "end-chat";
-        static inline constexpr std::string_view desc = "End a chat session";
-
-        using Params = nullptr_t;
-        using Return = nullptr_t;
-    };
 
     struct OpAddChatPrompt {
         static inline constexpr std::string_view id = "add-chat-prompt";
@@ -269,21 +214,20 @@ struct StateChat {
         using Return = nullptr_t;
     };
 
+    struct ChatResponseParams {
+        Field<uint32_t> maxTokens = Default(0);
+
+        template <typename Visitor>
+        void visitFields(Visitor& v) {
+            v(maxTokens, "max_tokens", "Maximum number of tokens to generate. 0 for unlimited");
+        }
+    };
+
     struct OpGetChatResponse {
         static inline constexpr std::string_view id = "get-chat-response";
         static inline constexpr std::string_view desc = "Get a response from the chat session";
 
-        struct Params {
-            Field<uint32_t> maxTokens = Default(0);
-            Field<bool> stream = Default(true);
-
-            template <typename Visitor>
-            void visitFields(Visitor& v) {
-                v(maxTokens, "max_tokens", "Maximum number of tokens to generate. 0 for unlimited");
-                v(stream, "stream", "Stream the output");
-            }
-        };
-
+        using Params = ChatResponseParams;
         struct Return {
             Field<std::string> response;
 
@@ -294,9 +238,13 @@ struct StateChat {
         };
     };
 
-    using Ops = std::tuple<OpChatEnd, OpAddChatPrompt, OpGetChatResponse>;
-    using Ins = std::tuple<>;
-    using Outs = std::tuple<>;
+    struct OpStreamChatResponse {
+        static inline constexpr std::string_view id = "stream-chat-response";
+        static inline constexpr std::string_view desc = "Stream a response from the chat session";
+        using Params = ChatResponseParams;
+        using Return = nullptr_t;
+        using Outs = std::tuple<StreamToken>;
+    };
 };
 
 struct StateEmbeddingInstance {
@@ -333,7 +281,7 @@ struct Interface {
     static inline constexpr std::string_view id = "llama.cpp";
     static inline constexpr std::string_view desc = "Inference based on our fork of https://github.com/ggerganov/llama.cpp";
 
-    using States = std::tuple<StateInitial, StateModelLoaded, StateInstance, StateChat>;
+    using States = std::tuple<StateLlama>;
 };
 
 } // namespace llama

@@ -27,29 +27,32 @@ int main() try {
     ac::local::DefaultBackend backend;
     ac::schema::BlockingIoHelper llama(backend.connect("llama.cpp", {}));
 
-    llama.expectState<schema::StateInitial>();
-    llama.call<schema::StateInitial::OpLoadModel>({
+    auto sid = llama.poll<ac::schema::StateChange>();
+    std::cout << "Initial state: " << sid << '\n';
+
+    auto load = llama.stream<schema::StateLlama::OpLoadModel>({
         .ggufPath = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
-    });
+        });
+    sid = load.rval();
+    std::cout << "Model loaded: " << sid << '\n';
 
-    llama.expectState<schema::StateModelLoaded>();
-    llama.call<schema::StateModelLoaded::OpStartInstance>({
-        .instanceType = "general"
-    });
+    const std::string roleUser = "user";
+    const std::string roleAssistant = "assistant";
 
-    llama.expectState<schema::StateInstance>();
+    sid = llama.call<schema::StateModelLoaded::OpStartInstance>({
+        .instanceType = "general",
+    });
+    std::cout << "Instance started: " << sid << '\n';
 
     const std::string prompt = "The first person to";
 
     std::vector<std::string> antiprompts;
     antiprompts.push_back("user:"); // change it to "name" to break the token generation with the default input
 
-    constexpr bool shouldStream = true;
-    auto result = llama.call<schema::StateInstance::OpRun>({
+    auto stream = llama.stream<schema::StateGeneralInstance::OpStream>({
         .prompt = prompt,
         .antiprompts = antiprompts,
-        .maxTokens = 20,
-        .stream = shouldStream
+        .maxTokens = 20
     });
 
     std::cout << "Prompt: " << prompt << "\n";
@@ -57,22 +60,17 @@ int main() try {
         std::cout << "Antiprompt "<<"[" << i << "]" <<": \"" << antiprompts[i] << "\"\n";
     }
 
-    std::cout   << "Generation: <prompt>" << prompt << "</prompt> ";
+    std::cout << "Generation: <prompt>" << prompt << "</prompt> ";
 
-    if (shouldStream) {
-        llama.expectState<schema::StateStreaming>();
-        for(auto t : llama.runStream<schema::StateStreaming::StreamToken, schema::StateInstance>()) {
-            std::cout << t << std::flush;
-        };
-    } else {
-        std::cout << result.result.value();
-    }
+    for(auto t : stream) {
+        std::cout << t << std::flush;
+    };
 
     std::cout << std::endl;
 
-    auto result2 = llama.call<schema::StateInstance::OpGetTokenData>({});
+    auto result2 = llama.call<schema::StateGeneralInstance::OpGetTokenData>({});
 
-    auto result3 = llama.call<schema::StateInstance::OpCompareTokenData>({
+    auto result3 = llama.call<schema::StateGeneralInstance::OpCompareTokenData>({
         .tokens1 = result2.tokens,
         .logits1 = result2.logits,
         .probs1 = result2.probs,
