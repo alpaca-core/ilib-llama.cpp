@@ -18,10 +18,11 @@
 #include <ac/local/BackendWorkerStrand.hpp>
 
 #include <ac/schema/LlamaCpp.hpp>
-#include <ac/schema/OpDispatchHelpers.hpp>
 #include <ac/schema/FrameHelpers.hpp>
+#include <ac/schema/StateChange.hpp>
+#include <ac/schema/Error.hpp>
+#include <ac/schema/OpTraits.hpp>
 
-#include <ac/FrameUtil.hpp>
 #include <ac/frameio/IoEndpoint.hpp>
 
 #include <ac/xec/coro.hpp>
@@ -42,27 +43,7 @@ namespace {
 
 namespace sc = schema::llama;
 using namespace ac::frameio;
-
-struct BasicRunner {
-    schema::OpDispatcherData m_dispatcherData;
-
-    Frame dispatch(Frame& f) {
-        try {
-            auto ret = m_dispatcherData.dispatch(f.op, std::move(f.data));
-            if (!ret) {
-                throw_ex{} << "llama: unknown op: " << f.op;
-            }
-            return {f.op, *ret};
-        }
-        catch (io::stream_closed_error&) {
-            throw;
-        }
-        catch (std::exception& e) {
-            return {"error", e.what()};
-        }
-    }
-};
-
+/*
 class ChatSession {
     llama::Session& m_session;
     const llama::Vocab& m_vocab;
@@ -129,7 +110,7 @@ public:
         }
         const bool isStreaming = params.stream.value();
         if (isStreaming) {
-            co_await m_io.push(Frame_stateChange(SchemaStreaming::id));
+            co_await m_io.push(Frame_from(schema::StateChange{}, SchemaStreaming::id));
         }
 
         if (m_addAssistantPrefix) {
@@ -171,7 +152,7 @@ public:
             }
 
             if (isStreaming && !antiprompt.hasRunningAntiprompts()) {
-                co_await m_io.push(Frame_fromStreamType(SchemaStreaming::StreamToken{}, result));
+                co_await m_io.push(Frame_from(SchemaStreaming::StreamToken{}, result));
                 result = {};
             }
         }
@@ -185,10 +166,10 @@ public:
 
         if (isStreaming) {
             if (!result.empty()) {
-                co_await m_io.push(Frame_fromStreamType(sc::StateStreaming::StreamToken{}, result));
+                co_await m_io.push(Frame_from(sc::StateStreaming::StreamToken{}, result));
                 result = {};
             }
-            co_await m_io.push(Frame_stateChange(Schema::id));
+            co_await m_io.push(Frame_from(schema::StateChange{}, Schema::id));
         }
 
         co_return result;
@@ -233,7 +214,7 @@ xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
         }
     };
 
-    co_await io.push(Frame_stateChange(Schema::id));
+    co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
 
     Runner runner(chat);
     while (true) {
@@ -312,7 +293,7 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             }
 
             if (isStreaming) {
-                co_await io.push(Frame_stateChange(SchemaStreaming::id));
+                co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
             }
 
             Schema::OpRun::Return ret;
@@ -332,7 +313,7 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
                 }
 
                 if (isStreaming && !antiprompt.hasRunningAntiprompts()) {
-                    co_await io.push(Frame_fromStreamType(SchemaStreaming::StreamToken{}, result));
+                    co_await io.push(Frame_from(SchemaStreaming::StreamToken{}, result));
                     result = {};
                 }
             }
@@ -341,10 +322,10 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
 
             if (isStreaming) {
                 if (!result.empty()) {
-                    co_await io.push(Frame_fromStreamType(sc::StateStreaming::StreamToken{}, result));
+                    co_await io.push(Frame_from(sc::StateStreaming::StreamToken{}, result));
                     result = {};
                 }
-                co_await io.push(Frame_stateChange(Schema::id));
+                co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
             }
 
             co_return result;
@@ -421,7 +402,7 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
         }
     };
 
-    co_await io.push(Frame_stateChange(Schema::id));
+    co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
 
     Runner runner(*instance, io);
     while (true) {
@@ -446,7 +427,7 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             co_await Llama_beginChat(io, runner.m_chatSession.value());
             runner.m_chatSession.reset();
 
-            co_await io.push(Frame_stateChange(Schema::id));
+            co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
         }
 
         if (runner.state == Runner::State::End) {
@@ -479,7 +460,7 @@ xec::coro<void> Llama_runInstanceEmbedding(IoEndpoint& io, std::unique_ptr<llama
         }
     };
 
-    co_await io.push(Frame_stateChange(Schema::id));
+    co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
 
     Runner runner(*instance);
     while (true) {
@@ -545,7 +526,7 @@ xec::coro<void> Llama_runModel(IoEndpoint& io, llama::Model& model, std::span<co
         }
     };
 
-    co_await io.push(Frame_stateChange(Schema::id));
+    co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
 
     Runner runner(model, loras);
     while (true) {
@@ -606,7 +587,7 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resour
         auto ex = co_await xec::executor{};
         IoEndpoint io(std::move(ep), ex);
 
-        co_await io.push(Frame_stateChange(Schema::id));
+        co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
 
         Runner runner(resourceCache);
 
@@ -621,7 +602,156 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resour
     catch (io::stream_closed_error&) {
         co_return;
     }
-}
+}*/
+
+namespace sc = schema::llama;
+
+struct LocalLlama : public xec::coro_state {
+    Backend& m_backend;
+    llama::ResourceCache& m_resourceCache;
+public:
+    LocalLlama(Backend& backend, xec::strand ex, llama::ResourceCache& resourceCache)
+        : xec::coro_state(std::move(ex))
+        , m_backend(backend)
+        , m_resourceCache(resourceCache)
+    {}
+
+    static Frame unknownOpError(const Frame& f) {
+        return Frame_from(schema::Error{}, "llama: unknown op: " + f.op);
+    }
+
+    template <typename ReturnParams>
+    static ReturnParams InstanceParams_fromSchema(sc::StateModelLoaded::InstanceParams& params) {
+        ReturnParams ret;
+        if (params.batchSize.hasValue()) {
+            ret.batchSize = params.batchSize.valueOr(2048);
+        }
+        if (params.ctxSize.hasValue()) {
+            ret.ctxSize = params.ctxSize.valueOr(1024);
+        }
+        if (params.ubatchSize.hasValue()) {
+            ret.ubatchSize = params.ubatchSize.valueOr(512);
+        }
+        return ret;
+    }
+
+    xec::coro<void> runGeneralInstance(IoEndpoint& io, llama::Instance& instance) {
+        co_return;
+    }
+
+    xec::coro<void> runEmbeddingInstance(IoEndpoint& io, llama::InstanceEmbedding& instance) {
+        co_return;
+    }
+
+    xec::coro<void> runChatInstance(IoEndpoint& io, llama::Instance& instance, sc::StateModelLoaded::InstanceParams& params) {
+        co_return;
+    }
+
+    xec::coro<void> runModel(IoEndpoint& io, sc::StateLlama::OpLoadModel::Params& lmParams) {
+        auto gguf = lmParams.ggufPath.valueOr("");
+        auto loraPaths = lmParams.loraPaths.valueOr({});
+
+        llama::Model::Params lparams;
+        lparams.gpu = lmParams.useGpu.valueOr(true);
+        lparams.vocabOnly = lmParams.vocabOnly.valueOr(false);
+        lparams.prefixInputsWithBos = lmParams.prefixInputsWithBos.valueOr(false);
+
+
+        auto model = m_resourceCache.getModel({.gguf = gguf, .params = lparams});
+
+        std::vector<llama::ResourceCache::LoraLock> loras;
+        for (auto& loraPath : loraPaths) {
+            loras.push_back(model->getLora({loraPath}));
+        }
+
+        using Schema = sc::StateModelLoaded;
+        co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
+
+        while (true) {
+            auto f = co_await io.poll();
+
+            Frame err;
+
+            try {
+                if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpStartInstance>{}, *f)) {
+                    if (iparams->instanceType == "general" || iparams->instanceType == "chat") {
+                        llama::Instance instance(*model, InstanceParams_fromSchema<llama::Instance::InitParams>(*iparams));
+                        for (auto& lora : loras) {
+                            instance.addLora(*lora, 1.f);
+                        }
+                        auto ctrlVectors = iparams->ctrlVectorPaths.valueOr({});
+                        if (ctrlVectors.size()) {
+                            std::vector<llama::ControlVector::LoadInfo> ctrlloadInfo;
+                            for (auto& path : ctrlVectors) {
+                                ctrlloadInfo.push_back({path, 2});
+                            }
+                            ac::llama::ControlVector ctrl(*model, ctrlloadInfo);
+                            instance.addControlVector(ctrl);
+                        }
+                        if (iparams->instanceType == "chat") {
+                            co_await runChatInstance(io, instance, *iparams);
+                        }
+                        else {
+                            co_await runGeneralInstance(io, instance);
+                        }
+                    }
+                    else if (iparams->instanceType == "embedding") {
+                        llama::InstanceEmbedding instance(*model, InstanceParams_fromSchema<llama::InstanceEmbedding::InitParams>(*iparams));
+                        co_await runEmbeddingInstance(io, instance);
+                    }
+                    else {
+                        err = Frame_from(schema::Error{}, "llama: unknown instance type: " + iparams->instanceType.value());
+                    }
+                }
+                else {
+                    err = unknownOpError(*f);
+                }
+            }
+            catch (std::runtime_error& e) {
+                err = Frame_from(schema::Error{}, e.what());
+            }
+
+            co_await io.push(err);
+        }
+    }
+
+    xec::coro<void> runSession(IoEndpoint& io) {
+        using Schema = sc::StateLlama;
+
+        co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
+
+        while (true) {
+            auto f = co_await io.poll();
+
+            Frame err;
+
+            try {
+                if (auto lm = Frame_optTo(schema::OpParams<Schema::OpLoadModel>{}, * f)) {
+                    co_await runModel(io, *lm);
+                }
+                else {
+                    err = unknownOpError(*f);
+                }
+            }
+            catch (std::runtime_error& e) {
+                err = Frame_from(schema::Error{}, e.what());
+            }
+
+            co_await io.push(err);
+        }
+    }
+
+    xec::coro<void> run(frameio::StreamEndpoint ep) {
+        try {
+            auto ex = get_executor();
+            IoEndpoint io(std::move(ep), ex);
+            co_await runSession(io);
+        }
+        catch (io::stream_closed_error&) {
+            co_return;
+        }
+    }
+};
 
 ServiceInfo g_serviceInfo = {
     .name = "ac llama.cpp",
@@ -639,7 +769,8 @@ struct LlamaService final : public Service {
     }
 
     virtual void createSession(frameio::StreamEndpoint ep, Dict) override {
-        co_spawn(m_workerStrand.executor(), Llama_runSession(std::move(ep), m_resourceCache));
+        auto llama = std::make_shared<LocalLlama>(m_workerStrand.backend, m_workerStrand.executor(), m_resourceCache);
+        co_spawn(llama, llama->run(std::move(ep)));
     }
 };
 

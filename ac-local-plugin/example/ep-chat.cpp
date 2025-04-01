@@ -27,26 +27,25 @@ int main() try {
     ac::local::DefaultBackend backend;
     ac::schema::BlockingIoHelper llama(backend.connect("llama.cpp", {}));
 
-    llama.expectState<schema::StateInitial>();
+    auto sid = llama.poll<ac::schema::StateChange>();
+    std::cout << "Initial state: " << sid << '\n';
 
-    llama.call<schema::StateInitial::OpLoadModel>({
+    auto load = llama.stream<schema::StateLlama::OpLoadModel>({
         .ggufPath = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
     });
-    llama.expectState<schema::StateModelLoaded>();
-
-    llama.call<schema::StateModelLoaded::OpStartInstance>({
-        .instanceType = "general"
-    });
-    llama.expectState<schema::StateInstance>();
+    sid = load.rval();
+    std::cout << "Model loaded: " << sid << '\n';
 
     const std::string roleUser = "user";
     const std::string roleAssistant = "assistant";
-    llama.call<schema::StateInstance::OpChatBegin>({
+
+    sid = llama.call<schema::StateModelLoaded::OpStartInstance>({
+        .instanceType = "chat",
         .setup = "A chat between a human user and a helpful AI assistant.",
         .roleUser = roleUser,
         .roleAssistant = roleAssistant
     });
-    llama.expectState<schema::StateChat>();
+    std::cout << "Instance started: " << sid << '\n';
 
     while (true) {
         std::cout << roleUser <<": ";
@@ -56,26 +55,17 @@ int main() try {
         }
         if (user == "/quit") break;
         user = ' ' + user;
-        llama.call<schema::StateChat::OpAddChatPrompt>({
+        llama.call<schema::StateChatInstance::OpAddChatPrompt>({
             .prompt = user
         });
 
-        constexpr bool shouldStream = true;
-        auto res = llama.call<schema::StateChat::OpGetChatResponse>({
-            .stream = shouldStream
-        });
+        auto stream = llama.stream<schema::StateChatInstance::OpStreamChatResponse>({});
 
-        if (shouldStream) {
-            llama.expectState<schema::StateStreaming>();
-            std::cout << roleAssistant << ": ";
-            for(auto t : llama.runStream<schema::StateStreaming::StreamToken, schema::StateChat>()) {
-                std::cout << t << std::flush;
-            };
-            std::cout << '\n';
-        } else {
-            std::cout << roleAssistant << ": " << res.response.value() << '\n';
-        }
-
+        std::cout << roleAssistant << ": ";
+        for(auto t : stream) {
+            std::cout << t << std::flush;
+        };
+        std::cout << '\n';
     }
 
     return 0;
