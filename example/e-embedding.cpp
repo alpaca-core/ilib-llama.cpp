@@ -29,7 +29,6 @@ int main() try {
 
     // load model
     std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/bge-small-en-v1.5-f16.gguf";
-    ac::llama::Model::Params modelParams;
     auto modelLoadProgressCallback = [](float progress) {
         const int barWidth = 50;
         static float currProgress = 0;
