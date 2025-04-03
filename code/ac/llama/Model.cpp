@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 #include "Model.hpp"
-#include "LoraAdapter.hpp"
+#include "Logging.hpp"
 #include <llama.h>
 #include <astl/move.hpp>
 #include <stdexcept>
