@@ -30,10 +30,8 @@ int main() try {
     ac::llama::initLibrary();
 
     // load model
-    // std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
-    // std::string ctrlVectorGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6-control_vector.gguf";
-    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/../../../tmp/llava-llama-3-8b-v1_1-f16.gguf";
-    std::string loraGguf = AC_TEST_DATA_LLAMA_DIR "/../../../tmp/Llama-3-Instruct-abliteration-LoRA-8B-f16.gguf";
+    std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
+    std::string ctrlVectorGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6-control_vector.gguf";
     auto modelLoadProgressCallback = [](float progress) {
         const int barWidth = 50;
         static float currProgress = 0;
@@ -51,11 +49,9 @@ int main() try {
     ac::local::ResourceManager rm;
     ac::llama::ResourceCache cache(rm);
     auto model = cache.getModel({.gguf = modelGguf, .params = {}}, modelLoadProgressCallback);
-    auto lora = model->getLora({loraGguf});
 
     // create inference instance
     ac::llama::Instance instance(*model, {});
-    instance.addLora(*lora, 1.f);
 
     // To add control vector uncomment the following lines
     // ac::llama::ControlVector ctrlVector(model, {{ctrlVectorGguf, 2.f}});
