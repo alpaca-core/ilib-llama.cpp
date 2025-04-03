@@ -13,6 +13,7 @@ endfunction()
 
 add_example(basic)
 add_example(embedding)
+add_example(infill)
 
 CPMAddPackage(gh:alpaca-core/helper-imgui-sdl@1.0.0)
 if(TARGET ac-dev::imgui-sdl-app)

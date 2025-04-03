@@ -86,28 +86,65 @@ void Session::setInitialPrompt(std::span<const Token> initialPrompt) {
     m_state.m_phase = State::Phase::Generating;
 }
 
-void Session::pushPrompt(std::span<const Token> prompt) {
+void Session::pushPrompt(std::span<const Token> prompt, std::span<const Token> postfix) {
     if (m_state.m_phase != State::Phase::Generating) {
         throw_ex{} << "Session hasn't started yet";
     }
 
     flushPendingState();
 
-    if (!prompt.empty()) {
-        auto& sampler = m_instance.sampler();
-        auto& model = m_instance.model();
-
-        // reset sampling and don't allow previous inputs to affect the generation
-        sampler.reset();
-
-        if (model.prefixInputsWithBos()) {
-            const auto tokenBos = llama_vocab_bos(model.vocab().lvocab());
-            // add bos token to the prompt
-            doDecode({&tokenBos, 1}, Source::InteractivePrompt);
-        }
-
-        doDecode(prompt, Source::InteractivePrompt);
+    if (prompt.empty() && postfix.empty()) {
+        throw_ex{} << "Prompt and postfix are empty";
     }
+
+    auto& model = m_instance.model();
+    auto& sampler = m_instance.sampler();
+
+    // reset sampling and don't allow previous inputs to affect the generation
+    sampler.reset();
+
+    std::vector<Token> tokens;
+    constexpr uint32_t maxAdditionalTokens = 4; // bos + fim_pre + fim_suf + fim_mid
+    tokens.reserve(prompt.size() + postfix.size() + maxAdditionalTokens);
+
+    if (model.prefixInputsWithBos()) {
+        const auto tokenBos = llama_vocab_bos(model.vocab().lvocab());
+        tokens.push_back(tokenBos);
+    }
+
+    auto safeAddToken = [&](Token token, const std::string& tokenName) {
+        if (token >= 0) {
+            tokens.push_back(token);
+        } else {
+            LLAMA_LOG(Warning, "Model doesn't have a ", tokenName," token");
+        }
+    };
+
+    if (!postfix.empty()) {
+        auto tokenFIMPre = llama_vocab_fim_pre(model.vocab().lvocab());
+        safeAddToken(tokenFIMPre, "FIM Prefix");
+    }
+
+    if (!prompt.empty()) {
+        tokens.insert(tokens.end(), prompt.begin(), prompt.end());
+    }
+
+    if (!postfix.empty()) {
+        auto tokenFIMSuff = llama_vocab_fim_suf(model.vocab().lvocab());
+        safeAddToken(tokenFIMSuff, "FIM Suffix");
+
+        tokens.insert(tokens.end(), postfix.begin(), postfix.end());
+
+        auto tkoenFIMMid = llama_vocab_fim_mid(model.vocab().lvocab());
+        safeAddToken(tkoenFIMMid, "FIM Middle");
+    }
+
+    if (tokens.size() > m_state.maxTokens) {
+        const auto ctxLen = llama_n_ctx(m_ctx);
+        throw_ex{} << "Prompt too long. Got " << tokens.size() << " tokens, max: " << ctxLen - 4;
+    }
+
+    doDecode(tokens, Source::InteractivePrompt);
 }
 
 Token Session::getToken() {
