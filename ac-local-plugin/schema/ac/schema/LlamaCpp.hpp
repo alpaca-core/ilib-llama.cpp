@@ -102,12 +102,14 @@ struct StateGeneralInstance {
 
     struct InferenceParams {
         Field<std::string> prompt;
+        Field<std::string> suffix = Default();
         Field<std::vector<std::string>> antiprompts = Default();
         Field<uint32_t> maxTokens = Default(0);
 
         template <typename Visitor>
         void visitFields(Visitor& v) {
             v(prompt, "prompt", "Prompt to complete");
+            v(suffix, "suffix", "Suffix of the prompt. Used for infill (code generation for example");
             v(antiprompts, "antiprompts", "Antiprompts to trigger stop");
             v(maxTokens, "max_tokens", "Maximum number of tokens to generate. 0 for unlimited");
         }

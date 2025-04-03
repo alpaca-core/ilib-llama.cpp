@@ -207,12 +207,19 @@ public:
 
     sc::StateGeneralInstance::OpRun::Return opRun(llama::Instance& instance, const sc::StateGeneralInstance::OpRun::Params& iparams) {
         auto& prompt = iparams.prompt.value();
+        auto& suffix = iparams.suffix.value();
         auto maxTokens = iparams.maxTokens.valueOr(0);
 
         auto& session = instance.startSession({});
 
         auto promptTokens = instance.model().vocab().tokenize(prompt, true, true);
-        session.setInitialPrompt(promptTokens);
+        if (suffix.empty()) {
+            session.setInitialPrompt(promptTokens);
+        } else{
+            auto suffixTokens = instance.model().vocab().tokenize(suffix, true, true);
+            session.setInitialPrompt({});
+            session.pushPrompt(promptTokens, suffixTokens);
+        }
 
         ac::llama::AntipromptManager antiprompt;
         for (auto& ap : iparams.antiprompts.value()) {
@@ -247,12 +254,19 @@ public:
         const sc::StateGeneralInstance::OpStream::Params& iparams) {
 
         auto& prompt = iparams.prompt.value();
+        auto& suffix = iparams.suffix.value();
         auto maxTokens = iparams.maxTokens.valueOr(0);
 
         auto& session = instance.startSession({});
 
         auto promptTokens = instance.model().vocab().tokenize(prompt, true, true);
-        session.setInitialPrompt(promptTokens);
+        if (suffix.empty()) {
+            session.setInitialPrompt(promptTokens);
+        } else{
+            auto suffixTokens = instance.model().vocab().tokenize(suffix, true, true);
+            session.setInitialPrompt({});
+            session.pushPrompt(promptTokens, suffixTokens);
+        }
 
         ac::llama::AntipromptManager antiprompt;
         for (auto& ap : iparams.antiprompts.value()) {
