@@ -296,13 +296,20 @@ xec::coro<void> Llama_runInstance(IoEndpoint& io, std::unique_ptr<llama::Instanc
             using SchemaStreaming = sc::StateStreaming;
 
             auto& prompt = params.prompt.value();
+            auto& suffix = params.suffix.value();
             const auto maxTokens = params.maxTokens.value();
             const bool isStreaming = params.stream.value();
 
             auto& s = m_instance.startSession({});
 
             auto promptTokens = m_instance.model().vocab().tokenize(prompt, true, true);
-            s.setInitialPrompt(promptTokens);
+            if (suffix.empty()) {
+                s.setInitialPrompt(promptTokens);
+            } else{
+                auto suffixTokens = m_instance.model().vocab().tokenize(suffix, true, true);
+                s.setInitialPrompt({});
+                s.pushPrompt(promptTokens, suffixTokens);
+            }
 
             auto& model = m_instance.model();
             ac::llama::AntipromptManager antiprompt;
