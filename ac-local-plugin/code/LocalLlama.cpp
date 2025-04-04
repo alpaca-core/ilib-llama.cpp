@@ -26,6 +26,7 @@
 #include <ac/frameio/IoEndpoint.hpp>
 
 #include <ac/xec/coro.hpp>
+#include <ac/xec/co_spawn.hpp>
 #include <ac/io/exception.hpp>
 
 #include <astl/move.hpp>
@@ -606,13 +607,12 @@ xec::coro<void> Llama_runSession(StreamEndpoint ep, llama::ResourceCache& resour
 
 namespace sc = schema::llama;
 
-struct LocalLlama : public xec::coro_state {
+struct LocalLlama {
     Backend& m_backend;
     llama::ResourceCache& m_resourceCache;
 public:
-    LocalLlama(Backend& backend, xec::strand ex, llama::ResourceCache& resourceCache)
-        : xec::coro_state(std::move(ex))
-        , m_backend(backend)
+    LocalLlama(Backend& backend, xec::strand, llama::ResourceCache& resourceCache)
+        : m_backend(backend)
         , m_resourceCache(resourceCache)
     {}
 
@@ -741,9 +741,8 @@ public:
         }
     }
 
-    xec::coro<void> run(frameio::StreamEndpoint ep) {
+    xec::coro<void> run(frameio::StreamEndpoint ep, xec::strand ex) {
         try {
-            auto ex = get_executor();
             IoEndpoint io(std::move(ep), ex);
             co_await runSession(io);
         }
@@ -763,14 +762,15 @@ struct LlamaService final : public Service {
 
     BackendWorkerStrand& m_workerStrand;
     llama::ResourceCache m_resourceCache{m_workerStrand.resourceManager};
+    std::shared_ptr<LocalLlama> llama;
 
     virtual const ServiceInfo& info() const noexcept override {
         return g_serviceInfo;
     }
 
     virtual void createSession(frameio::StreamEndpoint ep, Dict) override {
-        auto llama = std::make_shared<LocalLlama>(m_workerStrand.backend, m_workerStrand.executor(), m_resourceCache);
-        co_spawn(llama, llama->run(std::move(ep)));
+        llama = std::make_shared<LocalLlama>(m_workerStrand.backend, m_workerStrand.executor(), m_resourceCache);
+        co_spawn(m_workerStrand.executor(), llama->run(std::move(ep), m_workerStrand.executor()));
     }
 };
 

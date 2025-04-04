@@ -57,7 +57,6 @@ public:
 
 private:
     local::ResourceCache<ModelParams, ModelResource> m_modelCache;
-
 };
 
 }
