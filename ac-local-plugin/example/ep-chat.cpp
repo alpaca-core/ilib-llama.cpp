@@ -30,11 +30,11 @@ int main() try {
     auto sid = llama.poll<ac::schema::StateChange>();
     std::cout << "Initial state: " << sid << '\n';
 
-    auto load = llama.stream<schema::StateLlama::OpLoadModel>({
+    for (auto x : llama.stream<schema::StateLlama::OpLoadModel>({
         .ggufPath = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
-    });
-    sid = load.rval();
-    std::cout << "Model loaded: " << sid << '\n';
+    })) {
+        std::cout << "Model loaded: " << x.tag.value() << " " << x.progress.value() << '\n';
+    }
 
     const std::string roleUser = "user";
     const std::string roleAssistant = "assistant";
@@ -59,13 +59,16 @@ int main() try {
             .prompt = user
         });
 
-        auto stream = llama.stream<schema::StateChatInstance::OpStreamChatResponse>({});
-
         std::cout << roleAssistant << ": ";
-        for(auto t : stream) {
-            std::cout << t << std::flush;
-        };
-        std::cout << '\n';
+        constexpr bool streamChat = false;
+        if (streamChat) {
+            for(auto t: llama.stream<schema::StateChatInstance::OpStreamChatResponse>({})) {
+                std::cout << t << std::flush;
+            }
+        } else {
+            std::cout << llama.call<schema::StateChatInstance::OpGetChatResponse>({}).response.value() << std::flush;
+        }
+        std::cout << "\n";
     }
 
     return 0;

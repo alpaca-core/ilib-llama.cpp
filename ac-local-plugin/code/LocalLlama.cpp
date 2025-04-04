@@ -44,7 +44,7 @@ namespace {
 
 namespace sc = schema::llama;
 using namespace ac::frameio;
-/*
+
 class ChatSession {
     llama::Session& m_session;
     const llama::Vocab& m_vocab;
@@ -58,9 +58,9 @@ class ChatSession {
     bool m_addUserPrefix = true;
     bool m_addAssistantPrefix = true;
 public:
-    using Schema = sc::StateChat;
+    using Schema = sc::StateChatInstance;
 
-    ChatSession(llama::Instance& instance, IoEndpoint& io, sc::StateInstance::OpChatBegin::Params& params)
+    ChatSession(llama::Instance& instance, IoEndpoint& io, sc::StateModelLoaded::OpStartInstance::Params& params)
         : m_session(instance.startSession({}))
         , m_vocab(instance.model().vocab())
         , m_instance(instance)
@@ -81,7 +81,7 @@ public:
         m_instance.stopSession();
     }
 
-    void pushPrompt(Schema::OpAddChatPrompt::Params& params) {
+    xec::coro<void> pushPrompt(Schema::OpAddChatPrompt::Params& params) {
         auto& prompt = params.prompt.value();
 
         // prefix with space as the generated content doesn't include it
@@ -99,19 +99,15 @@ public:
         m_promptTokens = m_vocab.tokenize(prompt, false, false);
         m_session.pushPrompt(m_promptTokens);
         m_addAssistantPrefix = false;
+
+        co_await m_io.push(Frame_from(schema::SimpleOpReturn<Schema::OpAddChatPrompt>{}, {}));
     }
 
-    xec::coro<std::optional<std::string>> getResponse(Schema::OpGetChatResponse::Params params) {
-        using SchemaStreaming = sc::StateStreaming;
-
+    xec::coro<void> getResponse(Schema::ChatResponseParams params, bool isStreaming) {
         int maxTokens = params.maxTokens.value();
         // handle unlimited generation
         if (maxTokens == 0) {
             maxTokens = 1000;
-        }
-        const bool isStreaming = params.stream.value();
-        if (isStreaming) {
-            co_await m_io.push(Frame_from(schema::StateChange{}, SchemaStreaming::id));
         }
 
         if (m_addAssistantPrefix) {
@@ -153,7 +149,7 @@ public:
             }
 
             if (isStreaming && !antiprompt.hasRunningAntiprompts()) {
-                co_await m_io.push(Frame_from(SchemaStreaming::StreamToken{}, result));
+                co_await m_io.push(Frame_from(sc::StreamToken{}, result));
                 result = {};
             }
         }
@@ -167,16 +163,18 @@ public:
 
         if (isStreaming) {
             if (!result.empty()) {
-                co_await m_io.push(Frame_from(sc::StateStreaming::StreamToken{}, result));
+                co_await m_io.push(Frame_from(sc::StreamToken{}, result));
                 result = {};
             }
-            co_await m_io.push(Frame_from(schema::StateChange{}, Schema::id));
+            co_await m_io.push(Frame_from(schema::SimpleOpReturn<Schema::OpStreamChatResponse>{}, {}));
+        } else {
+            co_await m_io.push(Frame_from(Schema::OpGetChatResponse{}, {
+                .response = std::move(result)
+            }));
         }
-
-        co_return result;
     }
 };
-
+/*
 xec::coro<void> Llama_beginChat(IoEndpoint& io, ChatSession& chat) {
     using Schema = sc::StateChat;
 
@@ -816,7 +814,35 @@ public:
     }
 
     xec::coro<void> runChatInstance(IoEndpoint& io, llama::Instance& instance, sc::StateModelLoaded::InstanceParams& params) {
-        co_return;
+        using Schema = sc::StateChatInstance;
+        co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
+
+        ChatSession chatSession(instance, io, params);
+
+        while(true) {
+            auto f = co_await io.poll();
+
+            Frame err;
+
+            try {
+                if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpAddChatPrompt>{}, *f)) {
+                    co_await chatSession.pushPrompt(*iparams);
+                } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpGetChatResponse>{}, *f)) {
+                    co_await chatSession.getResponse(*iparams, false);
+                } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpStreamChatResponse>{}, *f)) {
+                    co_await chatSession.getResponse(*iparams, true);
+                } else {
+                    err = unknownOpError(*f);
+                }
+            }
+            catch (std::runtime_error& e) {
+                err = Frame_from(schema::Error{}, e.what());
+            }
+
+            if (!err.op.empty()) {
+                co_await io.push(err);
+            }
+        }
     }
 
     xec::coro<void> runModel(IoEndpoint& io, sc::StateLlama::OpLoadModel::Params& lmParams) {

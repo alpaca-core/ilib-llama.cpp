@@ -242,6 +242,7 @@ struct StateChatInstance {
                 v(response, "response", "Response from the chat session");
             }
         };
+        using Type = Return;
     };
 
     struct OpStreamChatResponse {
