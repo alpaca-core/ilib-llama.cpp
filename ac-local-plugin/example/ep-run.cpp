@@ -31,7 +31,7 @@ int main() try {
     std::cout << "Initial state: " << sid << '\n';
 
     for (auto x : llama.stream<schema::StateLlama::OpLoadModel>({
-        .ggufPath = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
+            .ggufPath = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
         })) {
             std::cout << "Model loaded: " << x.tag.value() << " " << x.progress.value() << '\n';
         }
@@ -49,20 +49,28 @@ int main() try {
     std::vector<std::string> antiprompts;
     antiprompts.push_back("user:"); // change it to "name" to break the token generation with the default input
 
-    auto stream = llama.stream<schema::StateGeneralInstance::OpStream>({
+    auto res = llama.call<schema::StateGeneralInstance::OpRun>({
         .prompt = prompt,
         .antiprompts = antiprompts,
         .maxTokens = 20
     });
-
     std::cout << "Prompt: " << prompt << "\n";
+
     for (size_t i = 0; i < antiprompts.size(); i++) {
         std::cout << "Antiprompt "<<"[" << i << "]" <<": \"" << antiprompts[i] << "\"\n";
     }
 
-    std::cout << "Generation: <prompt>" << prompt << "</prompt> ";
+    std::cout << "Run Generation: <prompt>" << prompt << "</prompt>\n";
 
-    for(auto t : stream) {
+    std::cout << res.result.value() << std::endl;
+
+    std::cout << "Streaming result: <prompt>" << prompt << "</prompt>\n";
+
+    for(auto t : llama.stream<schema::StateGeneralInstance::OpStream>({
+        .prompt = prompt,
+        .antiprompts = antiprompts,
+        .maxTokens = 20
+    })) {
         std::cout << t << std::flush;
     };
 
