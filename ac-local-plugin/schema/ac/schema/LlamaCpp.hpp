@@ -126,6 +126,8 @@ struct StateGeneralInstance {
                 v(result, "result", "Generated result (completion of prompt)");
             }
         };
+
+        using Type = Return;
     };
 
     struct OpStream {
@@ -154,6 +156,8 @@ struct StateGeneralInstance {
                 v(probs, "probs", "Probabilities for the tokens");
             }
         };
+
+        using Type = Return;
     };
 
     struct OpCompareTokenData {
@@ -187,6 +191,8 @@ struct StateGeneralInstance {
                 v(equal, "equal", "Whether the two sets are equal");
             }
         };
+
+        using Type = Return;
     };
 
     using Ops = std::tuple<OpRun, OpGetTokenData, OpCompareTokenData>;
