@@ -30,11 +30,11 @@ int main() try {
     auto sid = llama.poll<ac::schema::StateChange>();
     std::cout << "Initial state: " << sid << '\n';
 
-    auto load = llama.stream<schema::StateLlama::OpLoadModel>({
+    for (auto x : llama.stream<schema::StateLlama::OpLoadModel>({
         .ggufPath = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
-        });
-    sid = load.rval();
-    std::cout << "Model loaded: " << sid << '\n';
+        })) {
+            std::cout << "Model loaded: " << x.tag.value() << " " << x.progress.value() << '\n';
+        }
 
     const std::string roleUser = "user";
     const std::string roleAssistant = "assistant";
