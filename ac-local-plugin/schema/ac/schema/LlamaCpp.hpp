@@ -278,6 +278,7 @@ struct StateEmbeddingInstance {
                 v(result, "result", "Generated result (embedding vector)");
             }
         };
+        using Type = Return;
     };
 
     using Ops = std::tuple<OpRun>;

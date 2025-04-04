@@ -783,7 +783,36 @@ public:
     }
 
     xec::coro<void> runEmbeddingInstance(IoEndpoint& io, llama::InstanceEmbedding& instance) {
-        co_return;
+        using Schema = sc::StateEmbeddingInstance;
+        co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
+
+        while(true) {
+            auto f = co_await io.poll();
+
+            Frame err;
+
+            try {
+                if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpRun>{}, *f)) {
+                    auto& prompt = iparams->prompt.value();
+
+                    auto promptTokens = instance.model().vocab().tokenize(prompt, true, true);
+                    auto embVec = instance.getEmbeddingVector(promptTokens);
+
+                    co_await io.push(Frame_from(Schema::OpRun{}, {
+                        .result = std::move(embVec)
+                    }));
+                } else {
+                    err = unknownOpError(*f);
+                }
+            }
+            catch (std::runtime_error& e) {
+                err = Frame_from(schema::Error{}, e.what());
+            }
+
+            if (!err.op.empty()) {
+                co_await io.push(err);
+            }
+        }
     }
 
     xec::coro<void> runChatInstance(IoEndpoint& io, llama::Instance& instance, sc::StateModelLoaded::InstanceParams& params) {
