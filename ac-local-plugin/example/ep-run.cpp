@@ -34,7 +34,7 @@ int main() try {
             .ggufPath = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf"
         })) {
             std::cout << "Model loaded: " << x.tag.value() << " " << x.progress.value() << '\n';
-        }
+    }
 
     const std::string roleUser = "user";
     const std::string roleAssistant = "assistant";
