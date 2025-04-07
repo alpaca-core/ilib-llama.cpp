@@ -78,6 +78,8 @@ int main() try {
 
     auto result2 = llama.call<schema::StateGeneralInstance::OpGetTokenData>({});
 
+    std::cout << "Token Data [0]: " << result2.tokens.value()[0] << ", " << result2.logits.value()[0] << ", " << result2.probs.value()[0] << std::endl;
+
     auto result3 = llama.call<schema::StateGeneralInstance::OpCompareTokenData>({
         .tokens1 = result2.tokens,
         .logits1 = result2.logits,
@@ -86,6 +88,8 @@ int main() try {
         .logits2 = result2.logits,
         .probs2 = result2.probs
     });
+
+    std::cout << "Token Data Compare: " << result3.equal.value() << std::endl;
 
     return 0;
 }

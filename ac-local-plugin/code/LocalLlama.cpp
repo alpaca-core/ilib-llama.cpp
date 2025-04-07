@@ -205,139 +205,163 @@ public:
         return ret;
     }
 
+    sc::StateGeneralInstance::OpRun::Return opRun(llama::Instance& instance, const sc::StateGeneralInstance::OpRun::Params& iparams) {
+        auto& prompt = iparams.prompt.value();
+        auto maxTokens = iparams.maxTokens.valueOr(0);
+
+        auto& session = instance.startSession({});
+
+        auto promptTokens = instance.model().vocab().tokenize(prompt, true, true);
+        session.setInitialPrompt(promptTokens);
+
+        ac::llama::AntipromptManager antiprompt;
+        for (auto& ap : iparams.antiprompts.value()) {
+            antiprompt.addAntiprompt(ap);
+        }
+
+        sc::StateGeneralInstance::OpRun::Return ret;
+        auto& result = ret.result.materialize();
+        for (unsigned int i = 0; i < maxTokens; ++i) {
+            auto t = session.getToken();
+            if (t == ac::llama::Token_Invalid) {
+                break;
+            }
+
+            auto tokenStr = instance.model().vocab().tokenToString(t);
+            auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
+            result += tokenStr;
+            if (!matchedAntiPrompt.empty()) {
+                result.erase(result.size() - matchedAntiPrompt.size());
+                break;
+            }
+        }
+
+        instance.stopSession();
+
+        return ret;
+    }
+
+    xec::coro<void> opStream(
+        llama::Instance& instance,
+        IoEndpoint& io,
+        const sc::StateGeneralInstance::OpStream::Params& iparams) {
+
+        auto& prompt = iparams.prompt.value();
+        auto maxTokens = iparams.maxTokens.valueOr(0);
+
+        auto& session = instance.startSession({});
+
+        auto promptTokens = instance.model().vocab().tokenize(prompt, true, true);
+        session.setInitialPrompt(promptTokens);
+
+        ac::llama::AntipromptManager antiprompt;
+        for (auto& ap : iparams.antiprompts.value()) {
+            antiprompt.addAntiprompt(ap);
+        }
+
+        for (unsigned int i = 0; i < maxTokens; ++i) {
+            auto t = session.getToken();
+            if (t == ac::llama::Token_Invalid) {
+                break;
+            }
+
+            auto tokenStr = instance.model().vocab().tokenToString(t);
+            auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
+            co_await io.push(Frame_from(sc::StreamToken{}, tokenStr));
+            if (!matchedAntiPrompt.empty()) {
+                break;
+            }
+        }
+
+        instance.stopSession();
+
+        co_await io.push(Frame_from(schema::SimpleOpReturn<sc::StateGeneralInstance::OpStream>{}, {}));
+    }
+
+    xec::coro<void>  opGetTokenData(
+        llama::Instance& instance,
+        IoEndpoint& io,
+        const sc::StateGeneralInstance::OpGetTokenData::Params& iparams) {
+
+        auto& s = instance.startSession({});
+
+        constexpr int32_t topKElements = 10;
+        auto tokenData = s.getSampledTokenData(topKElements);
+
+        std::vector<int32_t> tokens(tokenData.size());
+        std::vector<float> logits(tokenData.size());
+        std::vector<float> probs(tokenData.size());
+        for (size_t i = 0; i < tokenData.size(); i++) {
+            tokens[i] = tokenData[i].token;
+            logits[i] = tokenData[i].logit;
+            probs[i] = tokenData[i].prob;
+        }
+
+        instance.stopSession();
+
+        co_await io.push(Frame_from(sc::StateGeneralInstance::OpGetTokenData{}, {
+            .tokens = std::move(tokens),
+            .logits = std::move(logits),
+            .probs = std::move(probs)
+        }));
+    }
+
+    xec::coro<void>  opCompareTokenData(
+        llama::Instance& instance,
+        IoEndpoint& io,
+        const sc::StateGeneralInstance::OpCompareTokenData::Params& iparams) {
+
+        auto& l1 = iparams.logits1.value();
+        auto& l2 = iparams.logits2.value();
+        auto& p1 = iparams.probs1.value();
+        auto& p2 = iparams.probs2.value();
+        auto& t1 = iparams.tokens1.value();
+        auto& t2 = iparams.tokens2.value();
+        assert(l1.size() == t1.size() && l1.size() == p1.size());
+        assert(l2.size() == t2.size() && l2.size() == p2.size());
+
+        ac::llama::TokenDataVector data1;
+        data1.resize(t1.size());
+        for (size_t i = 0; i < t1.size(); i++) {
+            data1[i] = ac::llama::TokenData{
+                .token = t1[i],
+                .logit = l1[i],
+                .prob = p1[i]
+            };
+        }
+
+        ac::llama::TokenDataVector data2;
+        data2.resize(t2.size());
+        for (size_t i = 0; i < t2.size(); i++) {
+            data2[i] = ac::llama::TokenData{
+                .token = t2[i],
+                .logit = l2[i],
+                .prob = p2[i]
+            };
+        }
+
+        co_await io.push(Frame_from(sc::StateGeneralInstance::OpCompareTokenData{}, {
+            .equal = ac::llama::LogitComparer::compare(data1, data2)
+        }));
+    }
+
     xec::coro<void> runGeneralInstance(IoEndpoint& io, llama::Instance& instance) {
         using Schema = sc::StateGeneralInstance;
         co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
 
         while(true) {
             auto f = co_await io.poll();
-
             Frame err;
 
             try {
                 if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpRun>{}, *f)) {
-                    auto prompt = iparams->prompt.value();
-                    auto maxTokens = iparams->maxTokens.valueOr(0);
-
-                    auto& session = instance.startSession({});
-
-                    auto promptTokens = instance.model().vocab().tokenize(prompt, true, true);
-                    session.setInitialPrompt(promptTokens);
-
-                    ac::llama::AntipromptManager antiprompt;
-                    for (auto& ap : iparams->antiprompts.value()) {
-                        antiprompt.addAntiprompt(ap);
-                    }
-
-                    Schema::OpRun::Return ret;
-                    auto& result = ret.result.materialize();
-                    for (unsigned int i = 0; i < maxTokens; ++i) {
-                        auto t = session.getToken();
-                        if (t == ac::llama::Token_Invalid) {
-                            break;
-                        }
-
-                        auto tokenStr = instance.model().vocab().tokenToString(t);
-                        auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
-                        result += tokenStr;
-                        if (!matchedAntiPrompt.empty()) {
-                            result.erase(result.size() - matchedAntiPrompt.size());
-                            break;
-                        }
-                    }
-
-                    instance.stopSession();
-
-                    co_await io.push(Frame_from(Schema::OpRun{}, ret));
-
+                    co_await io.push(Frame_from(Schema::OpRun{}, opRun(instance, *iparams)));
                 } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpStream>{}, *f)) {
-                    auto prompt = iparams->prompt.value();
-                    auto maxTokens = iparams->maxTokens.valueOr(0);
-
-                    auto& session = instance.startSession({});
-
-                    auto promptTokens = instance.model().vocab().tokenize(prompt, true, true);
-                    session.setInitialPrompt(promptTokens);
-
-                    ac::llama::AntipromptManager antiprompt;
-                    for (auto& ap : iparams->antiprompts.value()) {
-                        antiprompt.addAntiprompt(ap);
-                    }
-
-                    for (unsigned int i = 0; i < maxTokens; ++i) {
-                        auto t = session.getToken();
-                        if (t == ac::llama::Token_Invalid) {
-                            break;
-                        }
-
-                        auto tokenStr = instance.model().vocab().tokenToString(t);
-                        auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
-                        co_await io.push(Frame_from(sc::StreamToken{}, tokenStr));
-                        if (!matchedAntiPrompt.empty()) {
-                            break;
-                        }
-                    }
-
-                    instance.stopSession();
-
-                    co_await io.push(Frame_from(schema::SimpleOpReturn<Schema::OpStream>{}, {}));
-
+                    co_await opStream(instance, io, *iparams);
                 } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpGetTokenData>{}, *f)) {
-                    auto& s = instance.startSession({});
-
-                    constexpr int32_t topKElements = 10;
-                    auto tokenData = s.getSampledTokenData(topKElements);
-
-                    std::vector<int32_t> tokens(tokenData.size());
-                    std::vector<float> logits(tokenData.size());
-                    std::vector<float> probs(tokenData.size());
-                    for (size_t i = 0; i < tokenData.size(); i++) {
-                        tokens[i] = tokenData[i].token;
-                        logits[i] = tokenData[i].logit;
-                        probs[i] = tokenData[i].prob;
-                    }
-
-                    instance.stopSession();
-
-                    co_await io.push(Frame_from(Schema::OpGetTokenData{}, {
-                        .tokens = std::move(tokens),
-                        .logits = std::move(logits),
-                        .probs = std::move(probs)
-                    }));
-
+                    co_await opGetTokenData(instance, io, *iparams);
                 } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpCompareTokenData>{}, *f)) {
-                    auto& l1 = iparams->logits1.value();
-                    auto& l2 = iparams->logits2.value();
-                    auto& p1 = iparams->probs1.value();
-                    auto& p2 = iparams->probs2.value();
-                    auto& t1 = iparams->tokens1.value();
-                    auto& t2 = iparams->tokens2.value();
-                    assert(l1.size() == t1.size() && l1.size() == p1.size());
-                    assert(l2.size() == t2.size() && l2.size() == p2.size());
-
-                    ac::llama::TokenDataVector data1;
-                    data1.resize(t1.size());
-                    for (size_t i = 0; i < t1.size(); i++) {
-                        data1[i] = ac::llama::TokenData{
-                            .token = t1[i],
-                            .logit = l1[i],
-                            .prob = p1[i]
-                        };
-                    }
-
-                    ac::llama::TokenDataVector data2;
-                    data2.resize(t2.size());
-                    for (size_t i = 0; i < t2.size(); i++) {
-                        data2[i] = ac::llama::TokenData{
-                            .token = t2[i],
-                            .logit = l2[i],
-                            .prob = p2[i]
-                        };
-                    }
-
-                    co_await io.push(Frame_from(Schema::OpCompareTokenData{}, {
-                        .equal = ac::llama::LogitComparer::compare(data1, data2)
-                    }));
+                    co_await opCompareTokenData(instance, io, *iparams);
                 } else {
                     err = unknownOpError(*f);
                 }
