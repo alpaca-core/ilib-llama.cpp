@@ -22,7 +22,6 @@ namespace nlohmann = acnl;
 
 namespace ac::llama {
 
-
 class ChatFormat::impl {
 public:
     virtual ~impl() = default;
@@ -30,7 +29,7 @@ public:
     virtual std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const = 0;
 };
 
-class LlamaImpl : public ChatFormat::impl {
+class LlamaImpl final : public ChatFormat::impl {
 public:
     LlamaImpl(std::string templateStr)
         : m_templateStr(std::move(templateStr))
@@ -107,7 +106,7 @@ private:
     int m_templateId;
 };
 
-class JinjaImpl : public ChatFormat::impl {
+class JinjaImpl final : public ChatFormat::impl {
 public:
     JinjaImpl(ChatFormat::Params params)
     {
@@ -204,7 +203,7 @@ std::string ChatFormat::formatMsg(const ChatMsg& msg, std::span<const ChatMsg> h
     return m_impl->formatMsg(msg, history, addAssistantPrompt);
 }
 
-ChatFormat::Params getChatParams(const Model& model) {
+ChatFormat::Params ChatFormat::getChatParams(const Model& model) {
     ChatFormat::Params chatParams;
     if (auto tmpl = llama_model_chat_template(model.lmodel(), nullptr)) {
         chatParams.chatTemplate = tmpl;
