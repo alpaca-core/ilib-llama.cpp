@@ -19,6 +19,20 @@ struct StreamToken {
     using Type = std::string;
 };
 
+struct Message {
+    static constexpr auto id = "chat-message";
+    static constexpr auto desc = "Chat message";
+
+    Field<std::string> role;
+    Field<std::string> content;
+
+    template <typename Visitor>
+    void visitFields(Visitor& v) {
+        v(role, "role", "Messages to add to the chat session");
+        v(content, "content", "Messages to add to the chat session");
+    }
+};
+
 struct StateLlama {
     static constexpr auto id = "llama.cpp";
     static constexpr auto desc = "Initial state";
@@ -68,6 +82,7 @@ struct StateModelLoaded {
         Field<std::vector<std::string>> ctrlVectorPaths = Default();
 
         Field<std::string> setup = Default();
+        Field<std::string> chatTemplate = Default();
         Field<std::string> roleUser = Default("User");
         Field<std::string> roleAssistant = Default("Assistant");
 
@@ -93,7 +108,6 @@ struct StateModelLoaded {
     };
 
     using Ops = std::tuple<OpStartInstance>;
-
 };
 
 struct StateGeneralInstance {
@@ -205,6 +219,22 @@ struct StateGeneralInstance {
 struct StateChatInstance {
     static constexpr auto id = "chat-instance";
     static constexpr auto desc = "Chat state";
+
+    struct OpSendMessages {
+        static inline constexpr std::string_view id = "send-messages";
+        static inline constexpr std::string_view desc = "Send messages to the chat session";
+
+        struct Params {
+            Field<std::vector<Message>> messages;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(messages, "messages", "Messages to add to the chat session");
+            }
+        };
+
+        using Return = nullptr_t;
+    };
 
     struct OpAddChatPrompt {
         static inline constexpr std::string_view id = "add-chat-prompt";

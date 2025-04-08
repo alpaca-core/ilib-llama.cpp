@@ -38,6 +38,9 @@
 #include "aclp-llama-version.h"
 #include "aclp-llama-interface.hpp"
 
+// TODO: remove this include
+#include <iostream>
+
 namespace ac::local {
 
 namespace {
@@ -79,6 +82,15 @@ public:
 
     ~ChatSession() {
         m_instance.stopSession();
+    }
+
+    xec::coro<void> sendMessages(Schema::OpSendMessages::Params& params) {
+        auto& messages = params.messages.value();
+        for (size_t i = 0; i < messages.size(); ++i) {
+            std::cout << messages[i].role.value() << ": " << messages[i].content.value() << "\n";
+        }
+
+        co_await m_io.push(Frame_from(schema::SimpleOpReturn<Schema::OpSendMessages>{}, {}));
     }
 
     xec::coro<void> pushPrompt(Schema::OpAddChatPrompt::Params& params) {
@@ -441,6 +453,8 @@ public:
                     co_await chatSession.getResponse(*iparams, false);
                 } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpStreamChatResponse>{}, *f)) {
                     co_await chatSession.getResponse(*iparams, true);
+                } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpSendMessages>{}, *f)) {
+                    co_await chatSession.sendMessages(*iparams);
                 } else {
                     err = unknownOpError(*f);
                 }
