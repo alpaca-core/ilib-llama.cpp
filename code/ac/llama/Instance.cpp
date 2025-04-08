@@ -117,7 +117,7 @@ void Instance::warmup() {
         tmp.push_back(decoder_start_token_id);
     }
     llama_decode(lctx, makeInputBatch(tmp));
-    llama_kv_cache_clear(lctx);
+    llama_kv_self_clear(lctx);
     llama_synchronize(lctx);
     llama_perf_context_reset(lctx);
 }

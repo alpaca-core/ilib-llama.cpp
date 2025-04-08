@@ -28,7 +28,7 @@ Session::Session(Instance& instance, llama_context* ctx, InitParams params)
 {
     auto& sampler = m_instance.sampler();
 
-    llama_kv_cache_clear(m_ctx);
+    llama_kv_self_clear(m_ctx);
     llama_synchronize(m_ctx);
     llama_perf_context_reset(m_ctx);
     sampler.reset();
@@ -206,8 +206,8 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
             LLAMA_LOG(Debug, "Context is full. Swapping: past = ", m_state.numPast, ", numLeft: ", numLeft,
                 ", ctxLen: ", ctxLen, ", numKeep: ", m_state.numKeep, ", numDiscard: ", numDiscard);
 
-            llama_kv_cache_seq_rm(m_ctx, 0, m_state.numKeep, m_state.numKeep + numDiscard);
-            llama_kv_cache_seq_add(m_ctx, 0, m_state.numKeep + numDiscard, m_state.numPast, -numDiscard);
+            llama_kv_self_seq_rm(m_ctx, 0, m_state.numKeep, m_state.numKeep + numDiscard);
+            llama_kv_self_seq_add(m_ctx, 0, m_state.numKeep + numDiscard, m_state.numPast, -numDiscard);
 
             m_state.numPast -= numDiscard;
             haveFullContextMitigation = true;
@@ -224,9 +224,9 @@ void Session::doDecode(std::span<const Token> tokens, Source src) {
 
             LLAMA_LOG(Debug, "Group attention shift: ib = ", ib, ", bd = ", bd, ", dd = ", dd);
 
-            llama_kv_cache_seq_add(m_ctx, 0, m_state.gaIndex, m_state.numPast, ib * bd);
-            llama_kv_cache_seq_div(m_ctx, 0, m_state.gaIndex + ib * bd, m_state.gaIndex + ib * bd + gaWidth, gaFactor);
-            llama_kv_cache_seq_add(m_ctx, 0, m_state.gaIndex + ib * bd + gaWidth, m_state.numPast + ib * bd, dd);
+            llama_kv_self_seq_add(m_ctx, 0, m_state.gaIndex, m_state.numPast, ib * bd);
+            llama_kv_self_seq_div(m_ctx, 0, m_state.gaIndex + ib * bd, m_state.gaIndex + ib * bd + gaWidth, gaFactor);
+            llama_kv_self_seq_add(m_ctx, 0, m_state.gaIndex + ib * bd + gaWidth, m_state.numPast + ib * bd, dd);
 
             m_state.numPast -= bd;
 

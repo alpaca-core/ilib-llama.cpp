@@ -121,7 +121,7 @@ std::vector<float> InstanceEmbedding::getEmbeddingVector(std::span<const Token> 
     llama_batch batch = llama_batch_init(m_params.batchSize, 0, 1);
     batchAddSeq(batch, prompt, 0);
 
-    llama_kv_cache_clear(ctx);
+    llama_kv_self_clear(ctx);
 
     if (llama_model_has_encoder(model) && !llama_model_has_decoder(model)) {
         if (llama_encode(ctx, batch) < 0) {
