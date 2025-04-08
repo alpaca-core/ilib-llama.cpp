@@ -28,6 +28,8 @@ public:
 
     ~ChatFormat();
 
+    static Params getChatParams(const Model& model);
+
     const std::string& tpl() const noexcept { return m_templateStr; }
 
     // wrapper around llama_chat_apply_template
@@ -43,5 +45,4 @@ private:
     std::unique_ptr<impl> m_impl;
 };
 
-ChatFormat::Params getChatParams(const Model& model);
 } // namespace ac::llama
