@@ -257,7 +257,8 @@ int main() try {
     std::string modelGguf = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
     std::string embeddingModelGguf = AC_TEST_DATA_LLAMA_DIR "/bge-small-en-v1.5-f16.gguf";
 
-    ac::llama::ResourceCache cache;
+    ac::local::ResourceManager rm;
+    ac::llama::ResourceCache cache(rm);
 
     // create objects for the inference
     auto model = cache.getModel({.gguf = modelGguf});
