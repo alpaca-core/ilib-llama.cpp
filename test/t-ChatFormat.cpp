@@ -327,7 +327,7 @@ TEST_CASE("invalid") {
     CHECK_THROWS_WITH_AS(ac::llama::ChatFormat{badTpl}, "Unsupported chat template: bad template", std::runtime_error);
 }
 
-TEST_CASE("custom template2") {
+TEST_CASE("custom template") {
     std::string template_text = R"(
 {% for message in messages %}
 {% if message['role'] == 'system' %}
@@ -377,8 +377,22 @@ TEST_CASE("custom template2") {
     CHECK(res == expected_str);
 }
 
+TEST_CASE("invalid custom template") {
+    std::string bad_template = R"(
+{% for message in messages %}
+)";
+    ac::llama::ChatFormat::Params params = {
+        .chatTemplate = bad_template,
+        .bosToken = "",
+        .eosToken = ""
+    };
+
+    CHECK_THROWS_WITH_AS(ac::llama::ChatFormat{params}, "Unsupported jinja template. Error: Unterminated for at row 2, column 1:\n\n{% for message in messages %}\n^\n\n", std::runtime_error);
+}
+
 TEST_CASE("getChatParams") {
-    ac::llama::ResourceCache resourceCache;
+    ac::local::ResourceManager rm;
+    ac::llama::ResourceCache resourceCache(rm);
     const char* Model_117m_q6_k = AC_TEST_DATA_LLAMA_DIR "/gpt2-117m-q6_k.gguf";
     ac::llama::Model::Params iParams = { .vocabOnly = true };
     auto model = resourceCache.getModel({
@@ -386,7 +400,7 @@ TEST_CASE("getChatParams") {
         .params = iParams,
     });
     CHECK(!!model->lmodel());
-    auto chatParams = ac::llama::getChatParams(*model);
+    auto chatParams = ac::llama::ChatFormat::getChatParams(*model);
 
     CHECK(chatParams.chatTemplate == "");
     CHECK(chatParams.bosToken == "<|endoftext|>");
