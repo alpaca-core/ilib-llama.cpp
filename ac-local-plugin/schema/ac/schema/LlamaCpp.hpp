@@ -83,8 +83,9 @@ struct StateModelLoaded {
 
         Field<std::string> setup = Default();
         Field<std::string> chatTemplate = Default();
+        Field<std::string> bosOverride = Default();
+        Field<std::string> eosOverride = Default();
         Field<std::string> roleUser = Default("User");
-        Field<std::string> roleAssistant = Default("Assistant");
 
         template <typename Visitor>
         void visitFields(Visitor& v) {
@@ -92,10 +93,12 @@ struct StateModelLoaded {
             v(ctxSize, "ctx_size", "Size of the context");
             v(batchSize, "batch_size", "Size of the single batch");
             v(ubatchSize, "ubatch_size", "Size of the context");
-            v(ctrlVectorPaths, "ctrl-vectors", "Paths to the control vectors.");
-            v(setup, "setup", "Initial setup for the chat session");
+            v(ctrlVectorPaths, "ctrl_vectors", "Paths to the control vectors.");
+            v(setup, "setup", "Initial setup prompt for the chat session");
+            v(chatTemplate, "chat_template", "Chat template to use. If empty will use the model default");
+            v(bosOverride, "bos_override", "BOS token to use with the custom template. If empty will use the model default");
+            v(eosOverride, "eos_override", "EOS token to use with the custom template. If empty will use the model default");
             v(roleUser, "role_user", "Role name for the user");
-            v(roleAssistant, "role_assistant", "Role name for the assistant");
         }
     };
 
@@ -220,8 +223,8 @@ struct StateChatInstance {
     static constexpr auto id = "chat-instance";
     static constexpr auto desc = "Chat state";
 
-    struct OpSendMessages {
-        static inline constexpr std::string_view id = "send-messages";
+    struct OpAddChatMessages {
+        static inline constexpr std::string_view id = "add-messages";
         static inline constexpr std::string_view desc = "Send messages to the chat session";
 
         struct Params {
@@ -230,22 +233,6 @@ struct StateChatInstance {
             template <typename Visitor>
             void visitFields(Visitor& v) {
                 v(messages, "messages", "Messages to add to the chat session");
-            }
-        };
-
-        using Return = nullptr_t;
-    };
-
-    struct OpAddChatPrompt {
-        static inline constexpr std::string_view id = "add-chat-prompt";
-        static inline constexpr std::string_view desc = "Add a prompt to the chat session as a user";
-
-        struct Params {
-            Field<std::string> prompt = Default();
-
-            template <typename Visitor>
-            void visitFields(Visitor& v) {
-                v(prompt, "prompt", "Prompt to add to the chat session");
             }
         };
 
