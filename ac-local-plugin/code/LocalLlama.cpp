@@ -97,15 +97,15 @@ public:
 
         for (const auto& message : messages) {
             m_chatMessages.push_back(llama::ChatMsg{
-                .role = message.role.value(),
-                .text = message.content.value()
+                .role = std::move(message.role.value()),
+                .text = std::move(message.content.value())
             });
         }
 
         co_await m_io.push(Frame_from(schema::SimpleOpReturn<Schema::OpAddChatMessages>{}, {}));
     }
 
-    void submitPendingImages() {
+    void submitPendingMessages() {
         auto messagesToSubmit = m_chatMessages.size() - m_submittedMessages;
         std::string formatted;
         if (messagesToSubmit == 1) {
@@ -127,7 +127,7 @@ public:
         }
 
         if (m_submittedMessages != m_chatMessages.size()) {
-            submitPendingImages();
+            submitPendingMessages();
             m_submittedMessages = m_chatMessages.size();
         }
 
