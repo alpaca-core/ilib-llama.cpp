@@ -10,14 +10,21 @@ void AntipromptManager::addAntiprompt(std::string_view antiprompt) {
 }
 
 std::string AntipromptManager::feedGeneratedText(std::string_view text) {
+    std::vector<std::pair<std::string, size_t>> matchedAntiprompts;
     for (auto& ap : m_antiprompts) {
         int found = ap.feedText(text);
         if (found > 0) {
-            reset();
-            return found == 0 ?
-                        ap.getString():
-                        ap.getString() + std::string(text.substr(found, text.length()));
+            auto res = found == 0 ?
+                ap.getString():
+                ap.getString() + std::string(text.substr(found, text.length()));
+            matchedAntiprompts.push_back({res, found});
         }
+    }
+    if (!matchedAntiprompts.empty()) {
+        reset();
+        std::sort(matchedAntiprompts.begin(), matchedAntiprompts.end());
+        auto& [res, found] = matchedAntiprompts.front();
+        return res;
     }
 
     return {};

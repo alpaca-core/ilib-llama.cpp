@@ -46,10 +46,11 @@ int main() try {
                         "{{ '<|' + assistant_role + '|>\\n' }}"
                         "{% endif %}";
 
+    constexpr bool useChatTemplate = false;
     sid = llama.call<schema::StateModelLoaded::OpStartInstance>({
         .instanceType = "chat",
         .setup = "A chat between a human user and a helpful AI assistant.",
-        .chatTemplate = chatTemplate,
+        .chatTemplate = useChatTemplate ? chatTemplate : "",
         .roleUser = roleUser,
         .roleAssistant = roleAssistant,
     });
