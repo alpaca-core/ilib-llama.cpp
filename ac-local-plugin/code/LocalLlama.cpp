@@ -59,6 +59,8 @@ class ChatSession {
     std::vector<llama::ChatMsg> m_chatMessages;
     size_t m_submittedMessages = 0;
 
+    ac::llama::AntipromptManager m_antiprompt;
+
 public:
     using Schema = sc::StateChatInstance;
 
@@ -103,6 +105,17 @@ public:
         // user prefix should a substr before stop
         m_userPrefix = m_chatFormat->formatMsg({.role = m_roleUser, .text = "stop"}, {}, false);
         m_userPrefix = trim(m_userPrefix.substr(0, m_userPrefix.find("stop")));
+        m_antiprompt.addAntiprompt(m_userPrefix);
+
+        std::vector<llama::ChatMsg> msgs{
+            {.role = m_roleAsistant, .text = "pre"},
+            {.role = m_roleUser, .text = "post"},
+        };
+
+        auto assistantEnd = m_chatFormat->formatChat(msgs, false);
+        assistantEnd = assistantEnd.substr(assistantEnd.find("pre") + 3); // 3 because of the length of "pre"
+        assistantEnd = trim(assistantEnd.substr(0, assistantEnd.find("post")));
+        m_antiprompt.addAntiprompt(assistantEnd);
     }
 
     ~ChatSession() {
@@ -149,8 +162,7 @@ public:
             m_submittedMessages = m_chatMessages.size();
         }
 
-        ac::llama::AntipromptManager antiprompt;
-        antiprompt.addAntiprompt(m_userPrefix);
+        m_antiprompt.reset();
 
         std::string fullResponse;
         Schema::OpGetChatResponse::Return ret;
@@ -167,7 +179,7 @@ public:
             result += tokenStr;
             fullResponse += tokenStr;
 
-            auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
+            auto matchedAntiPrompt = m_antiprompt.feedGeneratedText(tokenStr);
             if (!matchedAntiPrompt.empty()) {
                 // and also hide it from the return value
                 // note that we assume that m_userPrefix is always the final piece of text in the response
@@ -176,7 +188,7 @@ public:
                 break;
             }
 
-            if (isStreaming && !antiprompt.hasRunningAntiprompts()) {
+            if (isStreaming && !m_antiprompt.hasRunningAntiprompts()) {
                 co_await m_io.push(Frame_from(sc::StreamToken{}, result));
                 result = {};
             }
