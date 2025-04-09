@@ -96,10 +96,11 @@ struct StateModelLoaded {
             v(ubatchSize, "ubatch_size", "Size of the context");
             v(ctrlVectorPaths, "ctrl_vectors", "Paths to the control vectors.");
             v(setup, "setup", "Initial setup prompt for the chat session");
-            v(chatTemplate, "chat_template", "Chat template to use. If empty will use the model default");
+            v(chatTemplate, "chat_template", "Valid Jinja chat template to use. If empty will use the model default");
             v(bosOverride, "bos_override", "BOS token to use with the custom template. If empty will use the model default");
             v(eosOverride, "eos_override", "EOS token to use with the custom template. If empty will use the model default");
             v(roleUser, "role_user", "Role name for the user");
+            v(roleAssistant, "role_assistant", "Role name for the assistant");
         }
     };
 

@@ -53,6 +53,7 @@ class ChatSession {
     IoEndpoint& m_io;
 
     std::string m_roleUser;
+    std::string m_userPrefix;
     std::string m_roleAsistant;
     std::unique_ptr<llama::ChatFormat> m_chatFormat;
     std::vector<llama::ChatMsg> m_chatMessages;
@@ -77,6 +78,7 @@ public:
             m_chatFormat = std::make_unique<llama::ChatFormat>(modelChatParams.chatTemplate);
         } else {
             modelChatParams.chatTemplate = chatTemplate;
+            modelChatParams.roleAssistant = params.roleAssistant.value();
             m_chatFormat = std::make_unique<llama::ChatFormat>(std::move(modelChatParams));
         }
 
@@ -85,6 +87,22 @@ public:
 
         m_roleUser = params.roleUser;
         m_roleAsistant = params.roleAssistant;
+
+        auto trim = [](const std::string& str) {
+            auto begin = std::find_if_not(str.begin(), str.end(), [](unsigned char ch) {
+                return std::isspace(ch);
+            });
+
+            auto end = std::find_if_not(str.rbegin(), str.rend(), [](unsigned char ch) {
+                return std::isspace(ch);
+            }).base();
+
+            return (begin < end) ? std::string(begin, end) : "";
+        };
+
+        // user prefix should a substr before stop
+        m_userPrefix = m_chatFormat->formatMsg({.role = m_roleUser, .text = "stop"}, {}, false);
+        m_userPrefix = trim(m_userPrefix.substr(0, m_userPrefix.find("stop")));
     }
 
     ~ChatSession() {
@@ -132,8 +150,7 @@ public:
         }
 
         ac::llama::AntipromptManager antiprompt;
-        auto userPrefix = "\n" + m_roleUser + ": ";
-        antiprompt.addAntiprompt(userPrefix);
+        antiprompt.addAntiprompt(m_userPrefix);
 
         std::string fullResponse;
         Schema::OpGetChatResponse::Return ret;

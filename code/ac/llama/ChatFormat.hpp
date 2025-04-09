@@ -21,6 +21,7 @@ public:
         std::string chatTemplate;
         std::string bosToken;
         std::string eosToken;
+        std::string roleAssistant = "";
     };
 
     explicit ChatFormat(std::string templateStr);
