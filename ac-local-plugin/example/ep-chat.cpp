@@ -38,10 +38,18 @@ int main() try {
 
     const std::string roleUser = "user";
     const std::string roleAssistant = "assistant";
+    const std::string chatTemplate =
+                        "{% for message in messages %}"
+                        "{{ '<|' + message['role'] + '|>\\n' + message['content'] + '<|end|>' + '\\n' }}"
+                        "{% endfor %}"
+                        "{% if add_generation_prompt %}"
+                        "{{ '<|' + assistant_role + '|>\\n' }}"
+                        "{% endif %}";
 
     sid = llama.call<schema::StateModelLoaded::OpStartInstance>({
         .instanceType = "chat",
         .setup = "A chat between a human user and a helpful AI assistant.",
+        .chatTemplate = chatTemplate,
         .roleUser = roleUser,
         .roleAssistant = roleAssistant,
     });
