@@ -52,7 +52,8 @@ class ChatSession {
     llama::Instance& m_instance;
     IoEndpoint& m_io;
 
-    std::string m_userPrefix;
+    std::string m_roleUser;
+    std::string m_roleAsistant;
     std::unique_ptr<llama::ChatFormat> m_chatFormat;
     std::vector<llama::ChatMsg> m_chatMessages;
     size_t m_submittedMessages = 0;
@@ -82,9 +83,8 @@ public:
         auto promptTokens = instance.model().vocab().tokenize(params.setup.value(), true, true);
         m_session.setInitialPrompt(promptTokens);
 
-        m_userPrefix = "\n";
-        m_userPrefix += params.roleUser;
-        m_userPrefix += ":";
+        m_roleUser = params.roleUser;
+        m_roleAsistant = params.roleAssistant;
     }
 
     ~ChatSession() {
@@ -132,8 +132,10 @@ public:
         }
 
         ac::llama::AntipromptManager antiprompt;
-        antiprompt.addAntiprompt(m_userPrefix);
+        auto userPrefix = "\n" + m_roleUser + ": ";
+        antiprompt.addAntiprompt(userPrefix);
 
+        std::string fullResponse;
         Schema::OpGetChatResponse::Return ret;
         auto& result = ret.response.materialize();
 
@@ -146,6 +148,7 @@ public:
 
             auto tokenStr = m_vocab.tokenToString(t);
             result += tokenStr;
+            fullResponse += tokenStr;
 
             auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
             if (!matchedAntiPrompt.empty()) {
@@ -167,6 +170,7 @@ public:
         // with a leading space, so instead of burdening them with "unorthodox" tokens, we'll clear it here
         if (!result.empty() && result[0] == ' ') {
             result.erase(0, 1);
+            fullResponse.erase(0, 1);
         }
 
         if (isStreaming) {
@@ -180,6 +184,8 @@ public:
                 .response = std::move(result)
             }));
         }
+
+        m_chatMessages.push_back({.role = m_roleAsistant, .text = std::move(fullResponse)});
     }
 };
 
