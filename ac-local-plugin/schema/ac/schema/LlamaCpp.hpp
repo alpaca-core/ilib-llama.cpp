@@ -86,6 +86,7 @@ struct StateModelLoaded {
         Field<std::string> bosOverride = Default();
         Field<std::string> eosOverride = Default();
         Field<std::string> roleUser = Default("User");
+        Field<std::string> roleAssistant = Default("Assistant");
 
         template <typename Visitor>
         void visitFields(Visitor& v) {

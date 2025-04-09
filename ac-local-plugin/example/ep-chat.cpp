@@ -43,6 +43,7 @@ int main() try {
         .instanceType = "chat",
         .setup = "A chat between a human user and a helpful AI assistant.",
         .roleUser = roleUser,
+        .roleAssistant = roleAssistant,
     });
     std::cout << "Instance started: " << sid << '\n';
 
