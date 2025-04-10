@@ -377,6 +377,59 @@ TEST_CASE("custom template") {
     CHECK(res == expected_str);
 }
 
+TEST_CASE("generation prompt") {
+    const std::vector<ac::llama::ChatMsg> chat = {
+        {"system", "You are a helpful assistant"},
+        {"user", "Hello"},
+        {"assistant", "Hello, how can I help?"},
+        {"user", "I need help with my homework"},
+    };
+
+    SUBCASE("llama.cpp template") {
+        ac::llama::ChatFormat fmt("llama3");
+
+        std::string expectedWithoutGenPrompt =
+            "<|start_header_id|>system<|end_header_id|>\n\n"
+            "You are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n"
+            "Hello<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+            "Hello, how can I help?<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n"
+            "I need help with my homework<|eot_id|>";
+
+        std::string expectedWithGenPrompt = expectedWithoutGenPrompt + "<|start_header_id|>assistant<|end_header_id|>\n\n";
+
+        CHECK(fmt.formatChat(chat, true) == expectedWithGenPrompt);
+        CHECK(fmt.formatChat(chat, false) == expectedWithoutGenPrompt);
+    }
+
+    SUBCASE("custom template") {
+        const std::string chatTemplate =
+            "{% for message in messages %}"
+            "{{ '<|' + message['role'] + '|>\\n' + message['content'] + '<|end|>' + '\\n' }}"
+            "{% endfor %}"
+            "{% if add_generation_prompt %}"
+            "{{ '<|' + assistant_role + '|>\\n' }}"
+            "{% endif %}";
+
+        ac::llama::ChatFormat fmt{{
+            .chatTemplate = chatTemplate,
+            .bosToken = "",
+            .eosToken = "",
+            .roleAssistant = "assistant"
+        }};
+
+        std::string expectedWithoutGenPrompt =
+            "<|system|>\nYou are a helpful assistant<|end|>\n"
+            "<|user|>\nHello<|end|>\n"
+            "<|assistant|>\nHello, how can I help?<|end|>\n"
+            "<|user|>\nI need help with my homework<|end|>\n";
+        std::string expectedWithGenPrompt = expectedWithoutGenPrompt + "<|assistant|>\n";
+
+        CHECK(fmt.formatChat(chat, true) == expectedWithGenPrompt);
+        CHECK(fmt.formatChat(chat, false) == expectedWithoutGenPrompt);
+    }
+
+}
+
 TEST_CASE("invalid custom template") {
     std::string bad_template = R"(
 {% for message in messages %}
