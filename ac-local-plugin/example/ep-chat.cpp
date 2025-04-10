@@ -38,14 +38,41 @@ int main() try {
 
     const std::string roleUser = "user";
     const std::string roleAssistant = "assistant";
+    const std::string chatTemplate =
+                        "{% for message in messages %}"
+                        "{{ '<|' + message['role'] + '|>\\n' + message['content'] + '<|end|>' + '\\n' }}"
+                        "{% endfor %}"
+                        "{% if add_generation_prompt %}"
+                        "{{ '<|' + assistant_role + '|>\\n' }}"
+                        "{% endif %}";
 
+    constexpr bool useChatTemplate = false;
     sid = llama.call<schema::StateModelLoaded::OpStartInstance>({
         .instanceType = "chat",
         .setup = "A chat between a human user and a helpful AI assistant.",
+        .chatTemplate = useChatTemplate ? chatTemplate : "",
         .roleUser = roleUser,
-        .roleAssistant = roleAssistant
+        .roleAssistant = roleAssistant,
     });
     std::cout << "Instance started: " << sid << '\n';
+
+    constexpr bool addPreviousMessages = true;
+    if (addPreviousMessages) {
+        std::vector<schema::Message> msgs = {
+            {roleUser, "Hey, I need help planning a surprise weekend getaway."},
+            {roleAssistant, "Sure! Are you thinking of something outdoorsy, a relaxing spa weekend, or maybe a city adventure?"},
+            {roleUser, "A quiet nature retreat would be perfect."},
+            {roleAssistant, "Great choice. I can suggest a few scenic cabin locations and even help you build a checklist for the trip."}
+        };
+
+        llama.call<schema::StateChatInstance::OpAddChatMessages>({
+            .messages = msgs
+        });
+
+        for (auto& m : msgs) {
+            std::cout << m.role.value() << ": " << m.content.value() << '\n';
+        }
+    }
 
     while (true) {
         std::cout << roleUser <<": ";
@@ -54,19 +81,22 @@ int main() try {
             std::getline(std::cin, user);
         }
         if (user == "/quit") break;
-        user = ' ' + user;
-        llama.call<schema::StateChatInstance::OpAddChatPrompt>({
-            .prompt = user
+
+        llama.call<schema::StateChatInstance::OpAddChatMessages>({
+            .messages = std::vector<schema::Message>{
+                { roleUser, user}
+            }
         });
 
         std::cout << roleAssistant << ": ";
-        constexpr bool streamChat = false;
+        constexpr bool streamChat = true;
         if (streamChat) {
             for(auto t: llama.stream<schema::StateChatInstance::OpStreamChatResponse>({})) {
                 std::cout << t << std::flush;
             }
         } else {
-            std::cout << llama.call<schema::StateChatInstance::OpGetChatResponse>({}).response.value() << std::flush;
+            auto res = llama.call<schema::StateChatInstance::OpGetChatResponse>({});
+            std::cout << res.response.value() << std::flush;
         }
         std::cout << "\n";
     }

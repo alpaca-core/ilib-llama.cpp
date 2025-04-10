@@ -19,6 +19,20 @@ struct StreamToken {
     using Type = std::string;
 };
 
+struct Message {
+    static constexpr auto id = "chat-message";
+    static constexpr auto desc = "Chat message";
+
+    Field<std::string> role;
+    Field<std::string> content;
+
+    template <typename Visitor>
+    void visitFields(Visitor& v) {
+        v(role, "role", "Messages to add to the chat session");
+        v(content, "content", "Messages to add to the chat session");
+    }
+};
+
 struct StateLlama {
     static constexpr auto id = "llama.cpp";
     static constexpr auto desc = "Initial state";
@@ -68,6 +82,9 @@ struct StateModelLoaded {
         Field<std::vector<std::string>> ctrlVectorPaths = Default();
 
         Field<std::string> setup = Default();
+        Field<std::string> chatTemplate = Default();
+        Field<std::string> bosOverride = Default();
+        Field<std::string> eosOverride = Default();
         Field<std::string> roleUser = Default("User");
         Field<std::string> roleAssistant = Default("Assistant");
 
@@ -77,8 +94,11 @@ struct StateModelLoaded {
             v(ctxSize, "ctx_size", "Size of the context");
             v(batchSize, "batch_size", "Size of the single batch");
             v(ubatchSize, "ubatch_size", "Size of the context");
-            v(ctrlVectorPaths, "ctrl-vectors", "Paths to the control vectors.");
-            v(setup, "setup", "Initial setup for the chat session");
+            v(ctrlVectorPaths, "ctrl_vectors", "Paths to the control vectors.");
+            v(setup, "setup", "Initial setup prompt for the chat session");
+            v(chatTemplate, "chat_template", "Valid Jinja chat template to use. If empty will use the model default");
+            v(bosOverride, "bos_override", "BOS token to use with the custom template. If empty will use the model default");
+            v(eosOverride, "eos_override", "EOS token to use with the custom template. If empty will use the model default");
             v(roleUser, "role_user", "Role name for the user");
             v(roleAssistant, "role_assistant", "Role name for the assistant");
         }
@@ -93,7 +113,6 @@ struct StateModelLoaded {
     };
 
     using Ops = std::tuple<OpStartInstance>;
-
 };
 
 struct StateGeneralInstance {
@@ -206,16 +225,16 @@ struct StateChatInstance {
     static constexpr auto id = "chat-instance";
     static constexpr auto desc = "Chat state";
 
-    struct OpAddChatPrompt {
-        static inline constexpr std::string_view id = "add-chat-prompt";
-        static inline constexpr std::string_view desc = "Add a prompt to the chat session as a user";
+    struct OpAddChatMessages {
+        static inline constexpr std::string_view id = "add-messages";
+        static inline constexpr std::string_view desc = "Send messages to the chat session";
 
         struct Params {
-            Field<std::string> prompt = Default();
+            Field<std::vector<Message>> messages;
 
             template <typename Visitor>
             void visitFields(Visitor& v) {
-                v(prompt, "prompt", "Prompt to add to the chat session");
+                v(messages, "messages", "Messages to add to the chat session");
             }
         };
 

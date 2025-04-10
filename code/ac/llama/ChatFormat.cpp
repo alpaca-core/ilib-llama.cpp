@@ -111,6 +111,7 @@ public:
     JinjaImpl(ChatFormat::Params params)
     {
         m_templateStr = std::move(params.chatTemplate);
+        m_assistantRole = std::move(params.roleAssistant);
 
         try {
             m_minjaTemplate = std::make_unique<minja::chat_template>(m_templateStr, params.bosToken, params.eosToken);
@@ -121,9 +122,9 @@ public:
 
     ~JinjaImpl() {}
 
-    virtual std::string formatChat(std::span<const ChatMsg> chat, bool /*addAssistantPrompt*/) const override {
+    virtual std::string formatChat(std::span<const ChatMsg> chat, bool addAssistantPrompt) const override {
         auto [jChat, size] = ac2jsonChatMessages(chat);
-        return size == 0 ? std::string{} : applyJinja(jChat);
+        return size == 0 ? std::string{} : applyJinja(jChat, addAssistantPrompt);
     }
 
     virtual std::string formatMsg(const ChatMsg& msg, std::span<const ChatMsg> history, bool addAssistantPrompt) const override {
@@ -132,10 +133,10 @@ public:
         }
 
         auto [jchat, size] = ac2jsonChatMessages(history);
-        auto fmtHistory = applyJinja(jchat);
+        auto fmtHistory = applyJinja(jchat, addAssistantPrompt);
 
         jchat.push_back({{"role", msg.role}, {"content", msg.text}});
-        auto fmtNew = applyJinja(jchat);
+        auto fmtNew = applyJinja(jchat, addAssistantPrompt);
 
         return fmtNew.substr(fmtHistory.size());
     }
@@ -156,19 +157,22 @@ private:
         return {messages, size};
     }
 
-    std::string applyJinja(acnl::json jChat) const {
+    std::string applyJinja(acnl::json jChat, bool addAssistantPrompt) const {
         auto startsWith = [](const std::string& str, const std::string& prefix) {
             return str.rfind(prefix, 0) == 0;
         };
 
         minja::chat_template_inputs tmpl_inputs;
         tmpl_inputs.messages = jChat;
+        tmpl_inputs.add_generation_prompt = addAssistantPrompt;
+        tmpl_inputs.extra_context = {
+            {"assistant_role",  m_assistantRole}
+        };
 
-        minja::chat_template_options tmpl_opts;
         // To avoid double BOS / EOS tokens, we're manually removing begining / trailing tokens
         // instead of using `chat_template_options.use_bos_token = false`, since these tokens
         // may be needed inside the template / between messages too.
-        auto result = m_minjaTemplate->apply(tmpl_inputs, tmpl_opts);
+        auto result = m_minjaTemplate->apply(tmpl_inputs);
         if (startsWith(result, m_minjaTemplate->bos_token())) {
             result = result.substr(m_minjaTemplate->bos_token().size());
         }
@@ -180,6 +184,7 @@ private:
 
     std::unique_ptr<minja::chat_template> m_minjaTemplate;
     std::string m_templateStr;
+    std::string m_assistantRole;
 };
 
 

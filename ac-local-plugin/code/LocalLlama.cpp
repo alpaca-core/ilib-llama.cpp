@@ -10,6 +10,7 @@
 #include <ac/llama/ControlVector.hpp>
 #include <ac/llama/LogitComparer.hpp>
 #include <ac/llama/ResourceCache.hpp>
+#include <ac/llama/ChatFormat.hpp>
 
 #include <ac/local/Service.hpp>
 #include <ac/local/ServiceFactory.hpp>
@@ -50,13 +51,16 @@ class ChatSession {
     const llama::Vocab& m_vocab;
     llama::Instance& m_instance;
     IoEndpoint& m_io;
+
+    std::string m_roleUser;
     std::string m_userPrefix;
-    std::string m_assistantPrefix;
+    std::string m_roleAsistant;
+    std::unique_ptr<llama::ChatFormat> m_chatFormat;
+    std::vector<llama::ChatMsg> m_chatMessages;
+    size_t m_submittedMessages = 0;
 
-    std::vector<llama::Token> m_promptTokens;
+    ac::llama::AntipromptManager m_antiprompt;
 
-    bool m_addUserPrefix = true;
-    bool m_addAssistantPrefix = true;
 public:
     using Schema = sc::StateChatInstance;
 
@@ -66,41 +70,84 @@ public:
         , m_instance(instance)
         , m_io(io)
     {
-        m_promptTokens = instance.model().vocab().tokenize(params.setup.value(), true, true);
-        m_session.setInitialPrompt(m_promptTokens);
+        auto& chatTemplate = params.chatTemplate.value();
+        auto modelChatParams = llama::ChatFormat::getChatParams(instance.model());
+        if (chatTemplate.empty()) {
+            if (modelChatParams.chatTemplate.empty()) {
+                throw_ex{} << "The model does not have a default chat template, please provide one.";
+            }
 
-        m_userPrefix = "\n";
-        m_userPrefix += params.roleUser;
-        m_userPrefix += ":";
-        m_assistantPrefix = "\n";
-        m_assistantPrefix += params.roleAssistant;
-        m_assistantPrefix += ":";
+            m_chatFormat = std::make_unique<llama::ChatFormat>(modelChatParams.chatTemplate);
+        } else {
+            modelChatParams.chatTemplate = chatTemplate;
+            modelChatParams.roleAssistant = params.roleAssistant.value();
+            m_chatFormat = std::make_unique<llama::ChatFormat>(std::move(modelChatParams));
+        }
+
+        auto promptTokens = instance.model().vocab().tokenize(params.setup.value(), true, true);
+        m_session.setInitialPrompt(promptTokens);
+
+        m_roleUser = params.roleUser;
+        m_roleAsistant = params.roleAssistant;
+
+        auto trim = [](const std::string& str) {
+            auto begin = std::find_if_not(str.begin(), str.end(), [](unsigned char ch) {
+                return std::isspace(ch);
+            });
+
+            auto end = std::find_if_not(str.rbegin(), str.rend(), [](unsigned char ch) {
+                return std::isspace(ch);
+            }).base();
+
+            return (begin < end) ? std::string(begin, end) : "";
+        };
+
+        // user prefix should a substr before stop
+        m_userPrefix = m_chatFormat->formatMsg({.role = m_roleUser, .text = "stop"}, {}, false);
+        m_userPrefix = trim(m_userPrefix.substr(0, m_userPrefix.find("stop")));
+        m_antiprompt.addAntiprompt(m_userPrefix);
+
+        std::vector<llama::ChatMsg> msgs{
+            {.role = m_roleAsistant, .text = "pre"},
+            {.role = m_roleUser, .text = "post"},
+        };
+
+        auto assistantEnd = m_chatFormat->formatChat(msgs, false);
+        assistantEnd = assistantEnd.substr(assistantEnd.find("pre") + 3); // 3 because of the length of "pre"
+        assistantEnd = trim(assistantEnd.substr(0, assistantEnd.find("post")));
+        m_antiprompt.addAntiprompt(assistantEnd);
     }
 
     ~ChatSession() {
         m_instance.stopSession();
     }
 
-    xec::coro<void> pushPrompt(Schema::OpAddChatPrompt::Params& params) {
-        auto& prompt = params.prompt.value();
+    xec::coro<void> addMessages(Schema::OpAddChatMessages::Params& params) {
+        auto& messages = params.messages.value();
+        std::vector<llama::Token> tokens;
 
-        // prefix with space as the generated content doesn't include it
-        prompt = ' ' + prompt;
-
-        if (m_addUserPrefix) {
-            // we haven't had an interaction yet, so we need to add the user prefix
-            // subsequent interaction will have it generated
-            prompt = m_userPrefix + prompt;
+        for (const auto& message : messages) {
+            m_chatMessages.push_back(llama::ChatMsg{
+                .role = std::move(message.role.value()),
+                .text = std::move(message.content.value())
+            });
         }
 
-        // prepare for the next generation
-        prompt += m_assistantPrefix;
+        co_await m_io.push(Frame_from(schema::SimpleOpReturn<Schema::OpAddChatMessages>{}, {}));
+    }
 
-        m_promptTokens = m_vocab.tokenize(prompt, false, false);
-        m_session.pushPrompt(m_promptTokens);
-        m_addAssistantPrefix = false;
+    void submitPendingMessages() {
+        auto messagesToSubmit = m_chatMessages.size() - m_submittedMessages;
+        std::string formatted;
+        if (messagesToSubmit == 1) {
+            formatted = m_chatFormat->formatMsg(
+                m_chatMessages.back(), {m_chatMessages.begin(), m_chatMessages.end() - 1}, true);
+        } else {
+            formatted = m_chatFormat->formatChat(
+                {m_chatMessages.begin() + m_submittedMessages, m_chatMessages.end()}, true);
+        }
 
-        co_await m_io.push(Frame_from(schema::SimpleOpReturn<Schema::OpAddChatPrompt>{}, {}));
+        m_session.pushPrompt(m_vocab.tokenize(formatted, true, true));
     }
 
     xec::coro<void> getResponse(Schema::ChatResponseParams params, bool isStreaming) {
@@ -110,18 +157,14 @@ public:
             maxTokens = 1000;
         }
 
-        if (m_addAssistantPrefix) {
-            // generated responses are requested first, but we haven't yet fed the assistant prefix to the model
-            auto prompt = m_assistantPrefix;
-            assert(m_promptTokens.empty()); // nothing should be pending here
-            m_promptTokens = m_vocab.tokenize(prompt, false, false);
-            m_session.pushPrompt(m_promptTokens);
+        if (m_submittedMessages != m_chatMessages.size()) {
+            submitPendingMessages();
+            m_submittedMessages = m_chatMessages.size();
         }
 
-        ac::llama::AntipromptManager antiprompt;
-        antiprompt.addAntiprompt(m_userPrefix);
+        m_antiprompt.reset();
 
-        m_addUserPrefix = true;
+        std::string fullResponse;
         Schema::OpGetChatResponse::Return ret;
         auto& result = ret.response.materialize();
 
@@ -134,21 +177,18 @@ public:
 
             auto tokenStr = m_vocab.tokenToString(t);
             result += tokenStr;
+            fullResponse += tokenStr;
 
-            auto matchedAntiPrompt = antiprompt.feedGeneratedText(tokenStr);
+            auto matchedAntiPrompt = m_antiprompt.feedGeneratedText(tokenStr);
             if (!matchedAntiPrompt.empty()) {
-                // user prefix was added by generation, so don't add it again
-                m_addUserPrefix = false;
-
                 // and also hide it from the return value
                 // note that we assume that m_userPrefix is always the final piece of text in the response
                 // TODO: update to better match the cutoff when issue #131 is done
                 result.erase(result.size() - matchedAntiPrompt.size());
-                m_addUserPrefix = false;
                 break;
             }
 
-            if (isStreaming && !antiprompt.hasRunningAntiprompts()) {
+            if (isStreaming && !m_antiprompt.hasRunningAntiprompts()) {
                 co_await m_io.push(Frame_from(sc::StreamToken{}, result));
                 result = {};
             }
@@ -159,6 +199,7 @@ public:
         // with a leading space, so instead of burdening them with "unorthodox" tokens, we'll clear it here
         if (!result.empty() && result[0] == ' ') {
             result.erase(0, 1);
+            fullResponse.erase(0, 1);
         }
 
         if (isStreaming) {
@@ -172,6 +213,8 @@ public:
                 .response = std::move(result)
             }));
         }
+
+        m_chatMessages.push_back({.role = m_roleAsistant, .text = std::move(fullResponse)});
     }
 };
 
@@ -435,12 +478,12 @@ public:
             Frame err;
 
             try {
-                if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpAddChatPrompt>{}, *f)) {
-                    co_await chatSession.pushPrompt(*iparams);
-                } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpGetChatResponse>{}, *f)) {
+                if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpGetChatResponse>{}, *f)) {
                     co_await chatSession.getResponse(*iparams, false);
                 } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpStreamChatResponse>{}, *f)) {
                     co_await chatSession.getResponse(*iparams, true);
+                } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpAddChatMessages>{}, *f)) {
+                    co_await chatSession.addMessages(*iparams);
                 } else {
                     err = unknownOpError(*f);
                 }
@@ -463,7 +506,6 @@ public:
         lparams.gpu = lmParams.useGpu.valueOr(true);
         lparams.vocabOnly = lmParams.vocabOnly.valueOr(false);
         lparams.prefixInputsWithBos = lmParams.prefixInputsWithBos.valueOr(false);
-
 
         auto model = m_resourceCache.getModel({.gguf = gguf, .params = lparams});
 
