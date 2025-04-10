@@ -352,32 +352,32 @@ TEST_CASE("control_vector") {
 }
 
 // commented out because it relies on specific calc
-//TEST_CASE("grammar") {
+// TEST_CASE("grammar") {
 //    auto model = resourceCache.getModel({.gguf = Model_117m_q6_k, .params = {}});
 //    CHECK(!!model->lmodel());
-//
+
 //    auto& params = model->params();
 //    CHECK(params.gpu);
 //    CHECK_FALSE(params.vocabOnly);
-//
+
 //    CHECK(model->trainCtxLength() == 1024);
 //    CHECK_FALSE(model->shouldAddBosToken());
 //    CHECK_FALSE(model->hasEncoder());
-//
-//    SUBCASE("Numbers 6-9 only") {
+
+//    SUBCASE("Numbers 0-9") {
 //        ac::llama::Instance::InitParams iparams;
 //        iparams.grammar =  R""""(
-//root        ::= en-char+ ([ \t\n] en-char+)*
-//en-char     ::= digit | letter
-//letter      ::= [a-zA-Z]
-//digit       ::= [6-9]
+// root        ::= ([ \t\n])* en-char+ ([ \t\n] en-char+)*
+// en-char     ::= digit | letter
+// letter      ::= [a-zA-Z]
+// digit       ::= [0-9]
 //            )"""";
-//
+
 //        ac::llama::Instance inst(*model, iparams);
 //        inst.warmup(); // should be safe
-//
+
 //        auto& s = inst.startSession({});
-//        std::vector<ac::llama::Token> tokens = model->vocab().tokenize("My name is Daniel and my age is", true, true);
+//        std::vector<ac::llama::Token> tokens = model->vocab().tokenize("My name is Daniel and my age (with digits) is", true, true);
 //        s.setInitialPrompt(tokens);
 //        std::string text;
 //        for (int i = 0; i < 5; ++i) {
@@ -385,24 +385,24 @@ TEST_CASE("control_vector") {
 //            REQUIRE(t != ac::llama::Token_Invalid);
 //            text += model->vocab().tokenToString(t);
 //        }
-//
-//        CHECK(text == "s about 9 years old");
+
+//        CHECK(text == " 14 and my parents are");
 //    }
-//
+
 //    SUBCASE("Numbers 1-5 only") {
 //        ac::llama::Instance::InitParams iparams;
 //        iparams.grammar =  R""""(
-//root        ::= en-char+ ([ \t\n] en-char+)*
-//en-char     ::= digit | letter
-//letter      ::= [a-zA-Z]
-//digit       ::= [1-5]
+// root        ::= ([ \t\n])* en-char+ ([ \t\n] en-char+)*
+// en-char     ::= digit | letter
+// letter      ::= [a-zA-Z]
+// digit       ::= [5-9]
 //            )"""";
-//
+
 //        ac::llama::Instance inst(*model, iparams);
 //        inst.warmup(); // should be safe
-//
+
 //        auto& s = inst.startSession({});
-//        std::vector<ac::llama::Token> tokens = model->vocab().tokenize("My name is Daniel and my age is", true, true);
+//        std::vector<ac::llama::Token> tokens = model->vocab().tokenize("My name is Daniel and my age (with digits) is", true, true);
 //        s.setInitialPrompt(tokens);
 //        std::string text;
 //        for (int i = 0; i < 5; ++i) {
@@ -410,21 +410,21 @@ TEST_CASE("control_vector") {
 //            REQUIRE(t != ac::llama::Token_Invalid);
 //            text += model->vocab().tokenToString(t);
 //        }
-//
-//        CHECK(text == "54 and I am an");
+
+//        CHECK(text == " about seven years old and");
 //    }
-//
+
 //    SUBCASE("All capital letters") {
 //        ac::llama::Instance::InitParams iparams;
 //        iparams.grammar =  R""""(
-//root        ::= en-char+ ([ \t\n] en-char+)*
-//en-char     ::= letter
-//letter      ::= [A-Z]
+// root        ::= ([ \t\n])* en-char+ ([ \t\n] en-char+)*
+// en-char     ::= letter
+// letter      ::= [A-Z]
 //            )"""";
-//
+
 //        ac::llama::Instance inst(*model, iparams);
 //        inst.warmup(); // should be safe
-//
+
 //        auto& s = inst.startSession({});
 //        std::vector<ac::llama::Token> tokens = model->vocab().tokenize("My name is Daniel and my age is", true, true);
 //        s.setInitialPrompt(tokens);
@@ -434,10 +434,10 @@ TEST_CASE("control_vector") {
 //            REQUIRE(t != ac::llama::Token_Invalid);
 //            text += model->vocab().tokenToString(t);
 //        }
-//
+
 //        CHECK(text == "ELLIE JONES");
 //    }
-//}
+// }
 
 TEST_CASE("embedding") {
     const char* Model_bge_small_en = AC_TEST_DATA_LLAMA_DIR "/bge-small-en-v1.5-f16.gguf";
