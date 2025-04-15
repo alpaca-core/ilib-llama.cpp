@@ -390,6 +390,154 @@ public:
         }
     }
 
+    sc::StateResponseInstance::OpRun::Return opRun(llama::Instance& instance, const sc::StateResponseInstance::OpRun::Params& iparams) {
+        auto& instr = iparams.instructions.value();
+        auto& input = iparams.input.value();
+        auto& inputItems = iparams.inputItems.value();
+        auto maxTokens = iparams.maxTokens.valueOr(0);
+
+        instance.resetSampler({
+            .topP = iparams.topP.value(),
+            .temp = iparams.temperature.value()
+        });
+
+        auto& session = instance.startSession({});
+
+        auto promptTokens = instance.model().vocab().tokenize(instr, true, true);
+        session.setInitialPrompt(promptTokens);
+
+        if (!(input.empty() || inputItems.empty())) {
+            throw_ex{} << "llama: no input provided. Please provide input via the 'input' field or 'inputItems' field.";
+        }
+
+        if (input.size()) {
+            auto promptTokens = instance.model().vocab().tokenize(input, true, true);
+            session.pushPrompt(promptTokens);
+        } else if (iparams.inputItems.hasValue()) {
+            for (const auto& item : iparams.inputItems.value()) {
+                if (!item.content.hasValue()) {
+                    throw_ex{} << "llama: no content provided for input item. Please provide content via the 'content' field.";
+                }
+                auto& content = item.content.value();
+                for(const auto& c : content) {
+                    if (c.type == "input_text") {
+                        auto promptTokens = instance.model().vocab().tokenize(c.text.value(), true, true);
+                        session.pushPrompt(promptTokens);
+                    } else if (c.type == "input_image") {
+                        // This will be added when llama.cpp support vision models
+                        assert(!"not implemented yet");
+                    } else {
+                        throw_ex{} << "llama: unknown content type: " + c.type.value();
+                    }
+                }
+            }
+        }
+
+        sc::StateResponseInstance::OpRun::Return ret;
+        auto& result = ret.result.materialize();
+        for (unsigned int i = 0; i < maxTokens; ++i) {
+            auto t = session.getToken();
+            if (t == ac::llama::Token_Invalid) {
+                break;
+            }
+
+            auto tokenStr = instance.model().vocab().tokenToString(t);
+            result += tokenStr;
+        }
+
+        instance.stopSession();
+        instance.resetSampler({});
+
+        return ret;
+    }
+
+    xec::coro<void> opStream(
+      llama::Instance& instance,
+      IoEndpoint& io,
+      const sc::StateResponseInstance::OpStream::Params& iparams) {
+        auto& instr = iparams.instructions.value();
+        auto& input = iparams.input.value();
+        auto& inputItems = iparams.inputItems.value();
+        auto maxTokens = iparams.maxTokens.valueOr(0);
+
+        instance.resetSampler({
+            .topP = iparams.topP.value(),
+            .temp = iparams.temperature.value()
+        });
+
+        auto& session = instance.startSession({});
+
+        auto promptTokens = instance.model().vocab().tokenize(instr, true, true);
+        session.setInitialPrompt(promptTokens);
+
+        if (!(input.empty() || inputItems.empty())) {
+            throw_ex{} << "llama: no input provided. Please provide input via the 'input' field or 'inputItems' field.";
+        }
+
+        if (input.size()) {
+            auto promptTokens = instance.model().vocab().tokenize(input, true, true);
+            session.pushPrompt(promptTokens);
+        } else if (iparams.inputItems.hasValue()) {
+            for (const auto& item : iparams.inputItems.value()) {
+                if (!item.content.hasValue()) {
+                    throw_ex{} << "llama: no content provided for input item. Please provide content via the 'content' field.";
+                }
+                auto& content = item.content.value();
+                for(const auto& c : content) {
+                    if (c.type == "input_text") {
+                        auto promptTokens = instance.model().vocab().tokenize(c.text.value(), true, true);
+                        session.pushPrompt(promptTokens);
+                    } else if (c.type == "input_image") {
+                        // This will be added when llama.cpp support vision models
+                        assert(!"not implemented yet");
+                    } else {
+                        throw_ex{} << "llama: unknown content type: " + c.type.value();
+                    }
+                }
+            }
+        }
+
+        for (unsigned int i = 0; i < maxTokens; ++i) {
+            auto t = session.getToken();
+            if (t == ac::llama::Token_Invalid) {
+                break;
+            }
+
+            auto tokenStr = instance.model().vocab().tokenToString(t);
+            co_await io.push(Frame_from(sc::StreamToken{}, tokenStr));
+        }
+
+        instance.stopSession();
+        instance.resetSampler({});
+    }
+
+    xec::coro<void> runResponsesInstance(IoEndpoint& io, llama::Instance& instance) {
+        using Schema = sc::StateResponseInstance;
+        co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
+
+        while (true) {
+            auto f = co_await io.poll();
+            Frame err;
+
+            try {
+                if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpRun>{}, *f)) {
+                    co_await io.push(Frame_from(Schema::OpRun{}, opRun(instance, *iparams)));
+                } else if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpStream>{}, *f)) {
+                    co_await opStream(instance, io, *iparams);
+                } else {
+                    err = unknownOpError(*f);
+                }
+            }
+            catch (std::runtime_error& e) {
+                err = Frame_from(schema::Error{}, e.what());
+            }
+
+            if (!err.op.empty()) {
+                co_await io.push(err);
+            }
+        }
+    }
+
     xec::coro<void> runEmbeddingInstance(IoEndpoint& io, llama::InstanceEmbedding& instance) {
         using Schema = sc::StateEmbeddingInstance;
         co_await io.push(Frame_from(schema::StateChange{}, Schema::id));
@@ -482,7 +630,9 @@ public:
 
             try {
                 if (auto iparams = Frame_optTo(schema::OpParams<Schema::OpStartInstance>{}, *f)) {
-                    if (iparams->instanceType == "general" || iparams->instanceType == "chat") {
+                    if (iparams->instanceType == "general" ||
+                        iparams->instanceType == "chat"    ||
+                        iparams->instanceType == "responses") {
                         llama::Instance instance(*model, InstanceParams_fromSchema<llama::Instance::InitParams>(*iparams));
                         for (auto& lora : loras) {
                             instance.addLora(*lora, 1.f);
@@ -498,9 +648,10 @@ public:
                         }
                         if (iparams->instanceType == "chat") {
                             co_await runChatInstance(io, instance, *iparams);
-                        }
-                        else {
+                        } else if (iparams->instanceType == "general") {
                             co_await runGeneralInstance(io, instance);
+                        } else {
+                            co_await runResponsesInstance(io, instance);
                         }
                     }
                     else if (iparams->instanceType == "embedding") {

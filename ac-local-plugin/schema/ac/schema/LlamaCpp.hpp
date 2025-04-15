@@ -197,7 +197,95 @@ struct StateGeneralInstance {
         using Type = Return;
     };
 
-    using Ops = std::tuple<OpRun, OpGetTokenData, OpCompareTokenData>;
+    using Ops = std::tuple<OpRun, OpStream, OpGetTokenData, OpCompareTokenData>;
+    using Ins = std::tuple<>;
+    using Outs = std::tuple<>;
+};
+
+
+struct ItemContent {
+    static constexpr auto id = "item-content";
+    static constexpr auto desc = "OpenAI item content";
+
+    Field<std::string> type;
+    Field<std::string> text = Default();
+    Field<std::string> imageUrl = Default();
+
+    template <typename Visitor>
+    void visitFields(Visitor& v) {
+        v(type, "type", "Type of the item. Possible values: input_text, input_image");
+        v(text, "text", "Text content of the item");
+        v(imageUrl, "image_url", "Image URL of the item");
+    }
+};
+struct InputItem{
+    static constexpr auto id = "input-item-list";
+    static constexpr auto desc = "OpenAI input item list state";
+
+    Field<std::string> role;
+    Field<std::vector<ItemContent>> content;
+
+    template <typename Visitor>
+    void visitFields(Visitor& v) {
+        v(role, "role", "Role of the item. Possible values: user, assistant, system");
+        v(content, "content", "List of items in the input item list state");
+    }
+};
+
+struct StateResponseInstance {
+    static constexpr auto id = "responses-instance";
+    static constexpr auto desc = "OpenAI responses compatible Instance state";
+    struct InferenceParams {
+        // To be fully compatible with OpenAI API
+        // "input" field can be treated as single string or list of items
+        // we cannot do that for now so we have 2 separate fields
+        Field<std::string> input = Default();
+        Field<std::vector<InputItem>> inputItems = Default();
+        Field<std::string> instructions = Default();
+        Field<uint32_t> maxTokens = Default(0);
+        Field<float> temperature = Default(0.80f);
+        Field<float> topP = Default(0.95f);
+        Field<std::string> truncation = Default("disabled");
+
+        template <typename Visitor>
+        void visitFields(Visitor& v) {
+            v(input, "prompt", "Prompt to complete");
+            v(inputItems, "input_items", "List of input items");
+            v(instructions, "instructions", "Instructions for the model to follow");
+            v(maxTokens, "max_output_tokens", "Maximum number of tokens to generate. 0 for unlimited");
+            v(temperature, "temperature", "Temperature for the sampler");
+            v(topP, "top_p", "Top P for the sampler");
+            v(truncation, "truncation", "The truncation strategy to use for the model response.");
+        }
+    };
+
+    struct OpRun {
+        static inline constexpr std::string_view id = "run";
+        static inline constexpr std::string_view desc = "Run the llama.cpp inference and produce some output";
+
+        using Params = InferenceParams;
+        struct Return {
+            Field<std::string> result;
+
+            template <typename Visitor>
+            void visitFields(Visitor& v) {
+                v(result, "result", "Generated result (completion of prompt)");
+            }
+        };
+
+        using Type = Return;
+    };
+
+    struct OpStream {
+        static inline constexpr std::string_view id = "stream";
+        static inline constexpr std::string_view desc = "Run the llama.cpp inference and produce some output";
+
+        using Params = InferenceParams;
+        using Return = nullptr_t;
+        using Outs = std::tuple<StreamToken>;
+    };
+
+    using Ops = std::tuple<OpRun, OpStream>;
     using Ins = std::tuple<>;
     using Outs = std::tuple<>;
 };
