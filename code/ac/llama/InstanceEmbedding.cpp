@@ -100,10 +100,15 @@ void batchAddSeq(llama_batch& batch, std::span<const Token> tokens, llama_seq_id
         batch.pos     [batch.n_tokens] = llama_pos(i);
         batch.n_seq_id[batch.n_tokens] = 1;
         batch.seq_id[batch.n_tokens][0] = seq_id;
-        batch.logits  [batch.n_tokens] = true;
+        batch.logits  [batch.n_tokens] = false;
 
         batch.n_tokens++;
     }
+
+    // We want to extract the embeddings
+    // for the last token in the sequence because
+    // it will capture the all tokens in the sequence.
+    batch.logits[batch.n_tokens - 1] = true;
 }
 }
 
