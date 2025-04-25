@@ -7,7 +7,7 @@
 #include <astl/u8c.h>
 #include <doctest/doctest.h>
 #include <vector>
-
+#include <regex>
 #include <iostream>
 
 #include "ac-test-data-llama-dir.h"

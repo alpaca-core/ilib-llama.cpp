@@ -5,6 +5,7 @@
 #include "export.h"
 #include "ChatMsg.hpp"
 
+#include <memory>
 #include <span>
 
 struct llama_chat_message;

@@ -202,7 +202,7 @@ std::string retrieveKnowledge(const std::string& query, VectorDatabase<Document>
 
 std::string generateResponse(ac::llama::Session& session, const std::string& prompt, VectorDatabase<Document>& vdb, int maxTokens = 512) {
     ac::llama::ChatFormat chatFormat("llama3");
-    ac::llama::ChatMsg msg{.text = prompt, .role = "user"};
+    ac::llama::ChatMsg msg{.role = "user", .text = prompt};
 
     // 1. Fill the context with the relevant recipes
     const std::string systemPrompt = "You are a recipe assistant. Given the following relevant recipes, select the most relevant one or paraphrase it:\n";
@@ -233,7 +233,7 @@ std::string generateResponse(ac::llama::Session& session, const std::string& pro
         response += g_chatInstance->model().vocab().tokenToString(token);
     }
 
-    g_messages.emplace_back(ac::llama::ChatMsg{.text = response, .role = "system"});
+    g_messages.emplace_back(ac::llama::ChatMsg{.role = "system", .text = response});
 
     return response;
 }
