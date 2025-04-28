@@ -23,6 +23,7 @@ public:
     Token decoderStartToken() const noexcept; // fallback to bos if not available
 
     bool isEog(Token token) const noexcept;
+    int32_t nTokens() const noexcept;
 
     std::string tokenToString(Token token, bool special = true) const;
 

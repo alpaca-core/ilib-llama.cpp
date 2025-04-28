@@ -10,7 +10,9 @@ namespace ac::llama {
 
 class LogitComparer {
 public:
-    static bool compare(const TokenDataVector& data1, const TokenDataVector& data2);
+    static float compare(const TokenDataVector& data1, const TokenDataVector& data2);
+
+    static float cosineDistance(const TokenDataVector& data1, const TokenDataVector& data2);
 
 private:
     static float jsd(const std::unordered_map<Token, float>& logits1, const std::unordered_map<Token, float>& logits2);

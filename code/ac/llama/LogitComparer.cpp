@@ -3,6 +3,7 @@
 //
 #include "LogitComparer.hpp"
 #include <cmath>
+#include <cassert>
 
 namespace ac::llama {
 
@@ -13,16 +14,16 @@ namespace ac::llama {
 //  - If at least 80% of the tokens are the same, we consider them equal
 // 3. Compare the Jensen-Shannon divergence of the probabilities
 //  - If the divergence is less than the treshold, we consider them equal
-bool LogitComparer::compare(const TokenDataVector& data1, const TokenDataVector& data2) {
-    const auto minSize = std::min(data1.size(), data2.size());
-    float distance1 = euclidean_distance_sq({data1.data(), minSize});
-    float distance2 = euclidean_distance_sq({data2.data(), minSize});
+float LogitComparer::compare(const TokenDataVector& data1, const TokenDataVector& data2) {
+    // const auto minSize = std::min(data1.size(), data2.size());
+    // float distance1 = euclidean_distance_sq({data1.data(), minSize});
+    // float distance2 = euclidean_distance_sq({data2.data(), minSize});
 
-    float relative_threshold = 0.02f; // 2% difference allowed
-    float res = std::fabs(distance1 - distance2) / std::max(distance1, distance2);
-    if (res > relative_threshold) {
-        return false;
-    }
+    // float relative_threshold = 0.02f; // 2% difference allowed
+    // float res = std::fabs(distance1 - distance2) / std::max(distance1, distance2);
+    // if (res > relative_threshold) {
+    //     return false;
+    // }
 
     std::unordered_map<int32_t, float> prob_map, prob_map2;
 
@@ -30,19 +31,30 @@ bool LogitComparer::compare(const TokenDataVector& data1, const TokenDataVector&
     for (const auto& p : data2) prob_map2[p.token] = p.prob;
 
     // Check if at least 80% of the tokens are the same
-    float matchingTokens = 0;
-    for (const auto& p : data1) {
-        if (prob_map2.count(p.token)) {
-            matchingTokens++;
-        }
-    }
+    // float matchingTokens = 0;
+    // for (const auto& p : data1) {
+    //     if (prob_map2.count(p.token)) {
+    //         matchingTokens++;
+    //     }
+    // }
 
-    float matchingPercentage = matchingTokens / minSize;
-    if (matchingPercentage < 0.8f) {
-        return false;
-    }
+    // float matchingPercentage = matchingTokens / minSize;
+    // if (matchingPercentage < 0.8f) {
+    //     return false;
+    // }
 
-    return jsd(prob_map, prob_map2) < 0.01;
+    return jsd(prob_map, prob_map2);
+}
+
+float LogitComparer::cosineDistance(const TokenDataVector& data1, const TokenDataVector& data2) {
+    assert(data1.size() == data2.size());
+    float dot = 0.0f, normA = 0.0f, normB = 0.0f;
+    for (size_t i = 0; i < data1.size(); ++i) {
+        dot += data1[i].logit * data2[i].logit;
+        normA += data1[i].logit * data1[i].logit;
+        normB += data2[i].logit * data2[i].logit;
+    }
+    return 1.0f - (dot / (std::sqrt(normA) * std::sqrt(normB)));
 }
 
 float LogitComparer::jsd(const std::unordered_map<Token, float>& probs1, const std::unordered_map<Token, float>& probs2) {

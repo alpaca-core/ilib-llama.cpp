@@ -30,6 +30,10 @@ bool Vocab::isEog(Token token) const noexcept {
     return llama_vocab_is_eog(m_lVocab, token);
 }
 
+int32_t Vocab::nTokens() const noexcept {
+    return llama_vocab_n_tokens(m_lVocab);
+}
+
 std::vector<Token> Vocab::tokenize(std::string_view text, bool addSpecial, bool parseSpecial) const {
     int32_t numTokens = int32_t(text.length()) + 2 * addSpecial; // optimistic max
     std::vector<Token> ret(numTokens);
