@@ -172,23 +172,6 @@ Token Sampler::sample(llama_context* lctx, int idx, bool grammarFirst) {
     return cur.data[cur.selected].id;
 }
 
-TokenDataVector Sampler::extractTokenData(llama_context* lctx) {
-   auto chain = m_samplerChain.get();
-
-    auto cur = fillLogits(m_cur, lctx, -1);
-
-    llama_sampler_apply(chain, &cur);
-
-    TokenDataVector result(cur.size);
-
-    for (size_t i = 0; i < cur.size; i++)
-    {
-        result[i] = {cur.data[i].id, cur.data[i].logit, cur.data[i].p};
-    }
-
-    return result;
-}
-
 void Sampler::reset() {
     llama_sampler_reset(m_grammarSampler.get());
     llama_sampler_reset(m_samplerChain.get());

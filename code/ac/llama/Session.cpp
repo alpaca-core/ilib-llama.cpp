@@ -19,6 +19,37 @@ llama_batch makeInputBatch(std::span<const Token> tokens) {
     auto nonConstTokens = const_cast<Token*>(tokens.data());
     return llama_batch_get_one(nonConstTokens, int32_t(tokens.size()));
 }
+
+void fillLogits(TokenDataVector& out, llama_context* lctx) {
+    const auto* logits = llama_get_logits_ith(lctx, -1);
+
+    const auto* lmodel = llama_get_model(lctx);
+    const int vocabSize = llama_vocab_n_tokens(llama_model_get_vocab(lmodel));
+
+    out.resize(vocabSize);
+
+    for (llama_token id = 0; id < vocabSize; id++) {
+        out[id] = {id, logits[id], 0.0f};
+    }
+}
+
+static void applySoftMax(TokenDataVector& data) {
+    // Apply softmax to the logits
+    // The vector should be sorted in descending order
+
+    float max_l = data[0].logit;
+    float cum_sum = 0.0f;
+
+    for (size_t i = 0; i < data.size(); ++i) {
+        float p = expf(data[i].logit - max_l);
+        data[i].prob = p;
+        cum_sum += p;
+    }
+
+    for (size_t i = 0; i < data.size(); ++i) {
+        data[i].prob /= cum_sum;
+    }
+}
 }
 
 Session::Session(Instance& instance, llama_context* ctx, InitParams params)
@@ -167,22 +198,22 @@ Token Session::getToken() {
     return m_state.m_currToken;
 }
 
-TokenDataVector Session::getSampledTokenData(int32_t topK, float topP) {
+TokenDataVector Session::getSampledTokenData(int32_t topK, float /*topP*/) {
     flushPendingState();
 
-    Sampler::Params sParams = {
-        .topK = topK,
-        .topP = topP,
-        .samplerSequence = {
-            Sampler::SamplingType::Top_K,
-            Sampler::SamplingType::Top_P,
-        }
-    };
-    Sampler sampler(const_cast<Model&>(m_instance.model()), sParams);
+    TokenDataVector tempData;
+    fillLogits(tempData, m_ctx);
 
-    auto logits = sampler.extractTokenData(m_ctx);
+    std::sort(tempData.begin(), tempData.end(), [](const TokenData & a, const TokenData & b) {
+        return a.logit > b.logit;
+    });
 
-    return logits;
+    TokenDataVector result;
+    result.insert(result.end(), tempData.begin(), tempData.begin() + topK);
+
+    applySoftMax(result);
+
+    return result;
 }
 
 std::vector<uint8_t> Session::getState() {
