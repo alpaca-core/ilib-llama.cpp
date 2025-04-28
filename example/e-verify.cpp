@@ -170,7 +170,8 @@ int main() try {
     std::string modelGguf = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
     // std::string modelGguf = "BgGPT-Gemma-2-2B-IT-v1.0.Q8_0.gguf";
     // std::string modelGguf = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
-    std::string modelGguf2 = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
+    std::string modelGguf2 = "Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf";
+    // std::string modelGguf2 = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
 
     Model m1(tmpFolder + modelGguf, {});
     Model m2(tmpFolder + modelGguf2, {});
@@ -183,9 +184,10 @@ int main() try {
     std::cout << "Models to compare:\n" << modelGguf << "\n" << modelGguf2 << "\n";
     std::cout << "Comparing...\n";
 
+    std::vector<float> jsdResults;
     for (int i = 0; i < 1; ++i) {
 
-        auto res = m1.generate(prompt, 1000);
+        auto res = m1.generate(prompt, 100);
         std::cout << "Model 1 generated: " << res.result << "\n";
         std::string genPrompt = res.initalPrompt;
 
@@ -207,6 +209,8 @@ int main() try {
                     totalWeightedDist += weight * fakeDist;
                     totalWeight += weight;
 
+                    jsdResults.push_back(1);
+
                     std::cout << "Token not found in model 2: " << step.tokenStr << "\n";
                     continue;
                 }
@@ -222,16 +226,24 @@ int main() try {
 
             assert(res2.steps.size() == 1);
 
-            // Step 1: Compare logits
-            float dist = ac::llama::LogitComparer::cosineDistance(step.data, res2.steps[0].data);
+            {
+                // Step 1: Compare logits
+                float dist = ac::llama::LogitComparer::cosineDistance(step.data, res2.steps[0].data);
 
-            // Step 2: Calculate confidence weight
-            float entropy = normalizedEntropy(step.data);
-            float weight = 1.0f - entropy; // high confidence = high weight
+                // Step 2: Calculate confidence weight
+                float entropy = normalizedEntropy(step.data);
+                float weight = 1.0f - entropy; // high confidence = high weight
 
-            // Step 3: Accumulate weighted distance
-            totalWeightedDist += weight * dist;
-            totalWeight += weight;
+                // Step 3: Accumulate weighted distance
+                totalWeightedDist += weight * dist;
+                totalWeight += weight;
+            }
+
+            {
+                float jsd = ac::llama::LogitComparer::JSD(step.data, res2.steps[0].data);
+                jsdResults.push_back(jsd);
+            }
+
         }
 
         // Final step: Normalize
@@ -244,6 +256,19 @@ int main() try {
         // 0.1 - 1.0 | Large differences, likely different models
         float finalScore = (totalWeight > 0.0f) ? (totalWeightedDist / totalWeight) : 0.0f;
         std::cout << "Final weighted distance score: " << finalScore << "\n";
+
+        // Final score interpretation
+        // average JSD score
+        // 0.0 | Perfect match (identical predictions)
+        // 0.0001 - 0.001 | Practically indistinguishable
+        // 0.001 - 0.01 | Moderate variation, likely different versions/settings
+        // 0.01 - 0.1 | Large differences, likely different models
+        float jsdSum = 0.0f;
+        for (const auto& jsd : jsdResults) {
+            jsdSum += jsd;
+        }
+        float jsdAvg = jsdSum / jsdResults.size();
+        std::cout << "Average JSD score: " << jsdAvg << "\n";
 
     }
     std::cout << '\n';
