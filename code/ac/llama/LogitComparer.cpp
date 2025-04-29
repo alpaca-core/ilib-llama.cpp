@@ -66,6 +66,30 @@ float LogitComparer::cosineDistance(const TokenDataVector& data1, const TokenDat
     return 1.0f - (dot / (std::sqrt(normA) * std::sqrt(normB)));
 }
 
+float LogitComparer::logitSimilarity(const TokenDataVector& data1, const TokenDataVector& data2) {
+    float res = 0.0f;
+
+    assert(data1.size() == data2.size());
+    std::unordered_map<int32_t, float> l_map, l2_map;
+
+    for (const auto& t : data1) l_map[t.token] = t.logit;
+    for (const auto& t : data2) l2_map[t.token] = t.logit;
+
+    for (auto& t : data1) {
+        if (l2_map.count(t.token)) {
+            res += 1 - (std::abs(t.logit - l2_map[t.token]) / std::max(t.logit, l2_map[t.token]));
+        } else {
+            // Token not found in the second map
+            // we should penalize the result
+            // but we don't know how much
+            // so we just add 0.0f for now, maybe it should be another value
+            res += 0.0f; // Token not found in the second map
+        }
+    }
+
+    return res / data1.size();
+}
+
 float LogitComparer::jsd(const std::unordered_map<Token, float>& probs1, const std::unordered_map<Token, float>& probs2) {
     std::unordered_map<Token, float> avg_dist;
     for (const auto& [token, p] : probs1) {
