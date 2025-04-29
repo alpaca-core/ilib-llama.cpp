@@ -277,7 +277,78 @@ Model::GenerationResult deserialize(std::string filename) {
     return res;
 }
 
+void runTest(Model::GenerationResult& r1, Model::GenerationResult& r2) {
+    std::vector<float> jsdResults;
+    std::vector<float> similarityResults;
+    float totalWeightedDist = 0.0f;
+    float totalWeight = 0.0f;
 
+    for (size_t i = 0; i < r1.steps.size(); i++) {
+        auto& step1 = r1.steps[i];
+        auto& step2 = r2.steps[i];
+
+        // Calculate distance
+        float dist = ac::llama::LogitComparer::cosineDistance(step1.data, step2.data);
+
+        // Calculate weight based on normalized entropy
+        float weight = normalizedEntropy(step1.data);
+        totalWeightedDist += weight * dist;
+        totalWeight += weight;
+
+        // Calculate JSD
+        float jsd = ac::llama::LogitComparer::JSD(step1.data, step2.data);
+        jsdResults.push_back(jsd);
+
+        // Calculate similarity
+        float similarity = ac::llama::LogitComparer::logitSimilarity(step1.data, step2.data);
+        similarityResults.push_back(similarity);
+
+        std::cout << "Token: " << step1.tokenStr
+                << ", Weight: " << weight
+                << ", JSD: " << jsd
+                << ", Similarity: " << similarity
+                << ", Distance: " << dist
+                << "\n";
+    }
+
+
+    {
+        // Final step: Normalize
+
+        // Score range | Interpretation
+        // 0.0 | Perfect match (identical predictions)
+        // 0.0001 - 0.001 | Practically indistinguishable
+        // 0.001 - 0.01 | Very close, slight variation
+        // 0.01 - 0.1 | Moderate variation, likely different versions/settings
+        // 0.1 - 1.0 | Large differences, likely different models
+        float finalScore = (totalWeight > 0.0f) ? (totalWeightedDist / totalWeight) : 0.0f;
+        std::cout << "Final weighted distance score: " << finalScore << "\n";
+    }
+
+    {
+        // Final score interpretation
+        // average JSD score
+        // 0.0 | Perfect match (identical predictions)
+        // 0.0001 - 0.001 | Practically indistinguishable
+        // 0.001 - 0.01 | Moderate variation, likely different versions/settings
+        // 0.01 - 0.1 | Large differences, likely different models
+        float jsdSum = 0.0f;
+        for (const auto& jsd : jsdResults) {
+            jsdSum += jsd;
+        }
+        float jsdAvg = jsdSum / jsdResults.size();
+        std::cout << "Average JSD score: " << jsdAvg << "\n";
+    }
+
+    {
+        float similaritySum = 0.0f;
+        for (const auto& similarity : similarityResults) {
+            similaritySum += similarity;
+        }
+        float similarityAvg = similaritySum / similarityResults.size();
+        std::cout << "Average similarity score: " << similarityAvg << "\n";
+    }
+}
 
 
 int main() try {
@@ -323,118 +394,7 @@ int main() try {
     std::cout << "Models to compare:\n" << modelGguf << "\n" << modelGguf2 << "\n";
     std::cout << "Comparing...\n";
 
-    std::vector<float> jsdResults;
-    std::vector<float> similarityResults;
-    for (int i = 0; i < 1; ++i) {
-        float totalWeightedDist = 0.0f;
-        float totalWeight = 0.0f;
-
-
-        // auto r1 = m1.generate(prompt, 100);
-        // std::cout << "Model 1 generated: " << r1.result << "\n";
-        // std::string genPrompt = r1.initalPrompt;
-        // auto genPromptTokens = m2.tokenize(genPrompt);
-
-        // Model::GenerationResult r2;
-        // for (size_t i = 0; i < r1.steps.size(); i++) {
-        //     auto& step  = r1.steps[i];
-        //     if (i > 0) {
-        //         if (m2.tokenExists(step.token)) {
-        //             genPromptTokens.push_back(step.token);
-        //         }
-        //         else {
-        //             // Instead of skipping, penalize fully
-        //             float fakeDist = 1.0f; // Maximum possible distance
-        //             float weight = 1.0f;    // Assume maximum confidence since we can't know entropy
-        //             totalWeightedDist += weight * fakeDist;
-        //             totalWeight += weight;
-
-        //             jsdResults.push_back(1);
-
-        //             similarityResults.push_back(0.0f);
-
-        //             std::cout << "Token not found in model 2: " << step.tokenStr << "\n";
-        //             continue;
-        //         }
-        //     }
-
-        //     if (i == 0) {
-        //         r2 = m2.generate(genPromptTokens, 0);
-        //     } else {
-        //         std::vector<ac::llama::Token> token{step.token};
-        //         Model::GenerationResult res2 = m2.generate(token, 0);
-        //         assert(res2.steps.size() == 1);
-        //         r2.steps.push_back(res2.steps[0]);
-        //     }
-        // }
-
-        for (size_t i = 0; i < r1.steps.size(); i++) {
-            auto& step1 = r1.steps[i];
-            auto& step2 = r2.steps[i];
-
-            // Calculate distance
-            float dist = ac::llama::LogitComparer::cosineDistance(step1.data, step2.data);
-
-            // Calculate weight based on normalized entropy
-            float weight = normalizedEntropy(step1.data);
-            totalWeightedDist += weight * dist;
-            totalWeight += weight;
-
-            // Calculate JSD
-            float jsd = ac::llama::LogitComparer::JSD(step1.data, step2.data);
-            jsdResults.push_back(jsd);
-
-            // Calculate similarity
-            float similarity = ac::llama::LogitComparer::logitSimilarity(step1.data, step2.data);
-            similarityResults.push_back(similarity);
-
-            std::cout << "Token: " << step1.tokenStr
-                    << ", Weight: " << weight
-                    << ", JSD: " << jsd
-                    << ", Similarity: " << similarity
-                    << ", Distance: " << dist
-                    << "\n";
-        }
-
-
-        {
-            // Final step: Normalize
-
-            // Score range | Interpretation
-            // 0.0 | Perfect match (identical predictions)
-            // 0.0001 - 0.001 | Practically indistinguishable
-            // 0.001 - 0.01 | Very close, slight variation
-            // 0.01 - 0.1 | Moderate variation, likely different versions/settings
-            // 0.1 - 1.0 | Large differences, likely different models
-            float finalScore = (totalWeight > 0.0f) ? (totalWeightedDist / totalWeight) : 0.0f;
-            std::cout << "Final weighted distance score: " << finalScore << "\n";
-        }
-
-        {
-            // Final score interpretation
-            // average JSD score
-            // 0.0 | Perfect match (identical predictions)
-            // 0.0001 - 0.001 | Practically indistinguishable
-            // 0.001 - 0.01 | Moderate variation, likely different versions/settings
-            // 0.01 - 0.1 | Large differences, likely different models
-            float jsdSum = 0.0f;
-            for (const auto& jsd : jsdResults) {
-                jsdSum += jsd;
-            }
-            float jsdAvg = jsdSum / jsdResults.size();
-            std::cout << "Average JSD score: " << jsdAvg << "\n";
-        }
-
-        {
-            float similaritySum = 0.0f;
-            for (const auto& similarity : similarityResults) {
-                similaritySum += similarity;
-            }
-            float similarityAvg = similaritySum / similarityResults.size();
-            std::cout << "Average similarity score: " << similarityAvg << "\n";
-        }
-    }
-    std::cout << '\n';
+    runTest(r1, r2);
 
     return 0;
 }
