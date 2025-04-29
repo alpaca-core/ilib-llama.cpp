@@ -21,6 +21,7 @@
 #include "ac-test-data-llama-dir.h"
 
 #include <iostream>
+#include <fstream>
 #include <string>
 
 struct GenerationStepData {
@@ -153,6 +154,130 @@ float normalizedEntropy(const ac::llama::TokenDataVector& data) {
 }
 
 
+std::vector<Model::GenerationResult> modelGeneration(Model& m1, Model& m2, const std::string& prompt, uint32_t maxTokens) {
+    auto res = m1.generate(prompt, maxTokens);
+
+    auto genPromptTokens = m2.tokenize(res.initalPrompt);
+
+    Model::GenerationResult res2;
+    for (size_t i = 0; i < res.steps.size(); i++) {
+        auto& step  = res.steps[i];
+        if (i > 0) {
+            if (m2.tokenExists(step.token)) {
+                genPromptTokens.push_back(step.token);
+            }
+            else {
+                std::cout << "Token not found in model 2: " << step.tokenStr << "\n";
+                throw std::runtime_error("Token not found in model 2");
+            }
+        }
+
+        if (i == 0) {
+            res2 = m2.generate(genPromptTokens, 0);
+        } else {
+            Model::GenerationResult tempRes;
+            std::vector<ac::llama::Token> token{step.token};
+            tempRes = m2.generate(token, 0);
+            res2.steps.push_back(tempRes.steps[0]);
+        }
+    }
+
+    res2.result = res.result;
+
+    return {res, res2};
+}
+
+// function to serialize the generation result in a file, so I can read it later
+void serialize(std::string& gguf, Model::GenerationResult& res) {
+    std::string filename = "gen-res_" + gguf + "_" + res.initalPrompt + ".bin";
+    std::ofstream f(filename, std::ios::binary);
+    if (!f) {
+        std::cerr << "Error opening file for writing: " << filename << "\n";
+        return;
+    }
+
+    size_t ggufSize = gguf.size();
+    f.write(reinterpret_cast<const char*>(&ggufSize), sizeof(ggufSize));
+    f.write(gguf.c_str(), gguf.size());
+
+    size_t initialPromptSize = res.initalPrompt.size();
+    f.write(reinterpret_cast<const char*>(&initialPromptSize), sizeof(initialPromptSize));
+    f.write(res.initalPrompt.c_str(), res.initalPrompt.size());
+
+    size_t resultSize = res.result.size();
+    f.write(reinterpret_cast<const char*>(&resultSize), sizeof(resultSize));
+    f.write(res.result.c_str(), res.result.size());
+
+    size_t stepsCount = res.steps.size();
+    f.write(reinterpret_cast<const char*>(&stepsCount), sizeof(stepsCount));
+    for (const auto& step : res.steps) {
+        size_t tokenStrSize = step.tokenStr.size();
+        f.write(reinterpret_cast<const char*>(&tokenStrSize), sizeof(tokenStrSize));
+
+        f.write(step.tokenStr.c_str(), step.tokenStr.size());
+        f.write(reinterpret_cast<const char*>(&step.token), sizeof(step.token));
+
+        size_t tokenCount = step.data.size();
+        f.write(reinterpret_cast<const char*>(&tokenCount), sizeof(tokenCount));
+        f.write(reinterpret_cast<const char*>(step.data.data()), sizeof(ac::llama::TokenData) * tokenCount);
+    }
+}
+
+Model::GenerationResult deserialize(std::string filename) {
+    std::ifstream f(filename, std::ios::binary);
+    if (!f) {
+        std::cerr << "Error opening file for reading: " << filename << "\n";
+        return {};
+    }
+
+    Model::GenerationResult res;
+
+    size_t ggufSize = 0;
+    f.read(reinterpret_cast<char*>(&ggufSize), sizeof(ggufSize));
+
+    std::string gguf;
+    gguf.resize(ggufSize);
+    f.read(gguf.data(), ggufSize);
+
+    size_t initialPromptSize = 0;
+    f.read(reinterpret_cast<char*>(&initialPromptSize), sizeof(initialPromptSize));
+
+    res.initalPrompt.resize(initialPromptSize);
+    f.read(res.initalPrompt.data(), initialPromptSize);
+
+    size_t resultSize;
+    f.read(reinterpret_cast<char*>(&resultSize), sizeof(resultSize));
+
+    res.result.resize(resultSize);
+    f.read(res.result.data(), resultSize);
+
+    size_t stepsCount;
+    f.read(reinterpret_cast<char*>(&stepsCount), sizeof(stepsCount));
+    res.steps.reserve(stepsCount);
+    for (size_t i = 0; i < stepsCount; ++i) {
+        GenerationStepData step;
+
+        size_t tokenStrSize;
+        f.read(reinterpret_cast<char*>(&tokenStrSize), sizeof(tokenStrSize));
+
+        step.tokenStr.resize(tokenStrSize);
+        f.read(step.tokenStr.data(), tokenStrSize);
+
+        f.read(reinterpret_cast<char*>(&step.token), sizeof(step.token));
+
+        size_t tokenCount;
+        f.read(reinterpret_cast<char*>(&tokenCount), sizeof(tokenCount));
+
+        step.data.resize(tokenCount);
+        f.read(reinterpret_cast<char*>(step.data.data()), sizeof(ac::llama::TokenData) * tokenCount);
+
+        res.steps.push_back(step);
+    }
+
+    return res;
+}
+
+
 
 
 int main() try {
@@ -173,11 +298,25 @@ int main() try {
     std::string modelGguf2 = "Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf";
     // std::string modelGguf2 = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
 
+    std::string prompt = "The first person to";
+    std::cout << "Prompt: " << prompt << "\n";
+
+#if 0
     Model m1(tmpFolder + modelGguf, {});
     Model m2(tmpFolder + modelGguf2, {});
 
-    std::string prompt = "The first person to";
-    std::cout << "Prompt: " << prompt << "\n";
+    auto genRes = modelGeneration(m1, m2, prompt, 100);
+    auto& r1 = genRes[0];
+    auto& r2 = genRes[1];
+    serialize(modelGguf, r1);
+    serialize(modelGguf2, r2);
+#else
+    std::string res1fn = "gen-res_" + modelGguf + "_" + prompt + ".bin";
+    std::string res2fn = "gen-res_" + modelGguf2 + "_" + prompt + ".bin";
+
+    auto r1 = deserialize(res1fn);
+    auto r2 = deserialize(res2fn);
+#endif
 
     std::string result = prompt;
 
@@ -185,91 +324,115 @@ int main() try {
     std::cout << "Comparing...\n";
 
     std::vector<float> jsdResults;
+    std::vector<float> similarityResults;
     for (int i = 0; i < 1; ++i) {
-
-        auto res = m1.generate(prompt, 100);
-        std::cout << "Model 1 generated: " << res.result << "\n";
-        std::string genPrompt = res.initalPrompt;
-
-        auto genPromptTokens = m2.tokenize(genPrompt);
-
         float totalWeightedDist = 0.0f;
         float totalWeight = 0.0f;
 
-        for (size_t i = 0; i < res.steps.size(); i++) {
-            auto& step  = res.steps[i];
-            if (i > 0) {
-                if (m2.tokenExists(step.token)) {
-                    genPromptTokens.push_back(step.token);
-                }
-                else {
-                    // Instead of skipping, penalize fully
-                    float fakeDist = 1.0f; // Maximum possible distance
-                    float weight = 1.0f;    // Assume maximum confidence since we can't know entropy
-                    totalWeightedDist += weight * fakeDist;
-                    totalWeight += weight;
 
-                    jsdResults.push_back(1);
+        // auto r1 = m1.generate(prompt, 100);
+        // std::cout << "Model 1 generated: " << r1.result << "\n";
+        // std::string genPrompt = r1.initalPrompt;
+        // auto genPromptTokens = m2.tokenize(genPrompt);
 
-                    std::cout << "Token not found in model 2: " << step.tokenStr << "\n";
-                    continue;
-                }
-            }
+        // Model::GenerationResult r2;
+        // for (size_t i = 0; i < r1.steps.size(); i++) {
+        //     auto& step  = r1.steps[i];
+        //     if (i > 0) {
+        //         if (m2.tokenExists(step.token)) {
+        //             genPromptTokens.push_back(step.token);
+        //         }
+        //         else {
+        //             // Instead of skipping, penalize fully
+        //             float fakeDist = 1.0f; // Maximum possible distance
+        //             float weight = 1.0f;    // Assume maximum confidence since we can't know entropy
+        //             totalWeightedDist += weight * fakeDist;
+        //             totalWeight += weight;
 
-            Model::GenerationResult res2;
-            if (i == 0) {
-                res2 = m2.generate(genPromptTokens, 0);
-            } else {
-                std::vector<ac::llama::Token> token{step.token};
-                res2 = m2.generate(token, 0);
-            }
+        //             jsdResults.push_back(1);
 
-            assert(res2.steps.size() == 1);
+        //             similarityResults.push_back(0.0f);
 
-            {
-                // Step 1: Compare logits
-                float dist = ac::llama::LogitComparer::cosineDistance(step.data, res2.steps[0].data);
+        //             std::cout << "Token not found in model 2: " << step.tokenStr << "\n";
+        //             continue;
+        //         }
+        //     }
 
-                // Step 2: Calculate confidence weight
-                float entropy = normalizedEntropy(step.data);
-                float weight = 1.0f - entropy; // high confidence = high weight
+        //     if (i == 0) {
+        //         r2 = m2.generate(genPromptTokens, 0);
+        //     } else {
+        //         std::vector<ac::llama::Token> token{step.token};
+        //         Model::GenerationResult res2 = m2.generate(token, 0);
+        //         assert(res2.steps.size() == 1);
+        //         r2.steps.push_back(res2.steps[0]);
+        //     }
+        // }
 
-                // Step 3: Accumulate weighted distance
-                totalWeightedDist += weight * dist;
-                totalWeight += weight;
-            }
+        for (size_t i = 0; i < r1.steps.size(); i++) {
+            auto& step1 = r1.steps[i];
+            auto& step2 = r2.steps[i];
 
-            {
-                float jsd = ac::llama::LogitComparer::JSD(step.data, res2.steps[0].data);
-                jsdResults.push_back(jsd);
-            }
+            // Calculate distance
+            float dist = ac::llama::LogitComparer::cosineDistance(step1.data, step2.data);
 
+            // Calculate weight based on normalized entropy
+            float weight = normalizedEntropy(step1.data);
+            totalWeightedDist += weight * dist;
+            totalWeight += weight;
+
+            // Calculate JSD
+            float jsd = ac::llama::LogitComparer::JSD(step1.data, step2.data);
+            jsdResults.push_back(jsd);
+
+            // Calculate similarity
+            float similarity = ac::llama::LogitComparer::logitSimilarity(step1.data, step2.data);
+            similarityResults.push_back(similarity);
+
+            std::cout << "Token: " << step1.tokenStr
+                    << ", Weight: " << weight
+                    << ", JSD: " << jsd
+                    << ", Similarity: " << similarity
+                    << ", Distance: " << dist
+                    << "\n";
         }
 
-        // Final step: Normalize
 
-        // Score range | Interpretation
-        // 0.0 | Perfect match (identical predictions)
-        // 0.0001 - 0.001 | Practically indistinguishable
-        // 0.001 - 0.01 | Very close, slight variation
-        // 0.01 - 0.1 | Moderate variation, likely different versions/settings
-        // 0.1 - 1.0 | Large differences, likely different models
-        float finalScore = (totalWeight > 0.0f) ? (totalWeightedDist / totalWeight) : 0.0f;
-        std::cout << "Final weighted distance score: " << finalScore << "\n";
+        {
+            // Final step: Normalize
 
-        // Final score interpretation
-        // average JSD score
-        // 0.0 | Perfect match (identical predictions)
-        // 0.0001 - 0.001 | Practically indistinguishable
-        // 0.001 - 0.01 | Moderate variation, likely different versions/settings
-        // 0.01 - 0.1 | Large differences, likely different models
-        float jsdSum = 0.0f;
-        for (const auto& jsd : jsdResults) {
-            jsdSum += jsd;
+            // Score range | Interpretation
+            // 0.0 | Perfect match (identical predictions)
+            // 0.0001 - 0.001 | Practically indistinguishable
+            // 0.001 - 0.01 | Very close, slight variation
+            // 0.01 - 0.1 | Moderate variation, likely different versions/settings
+            // 0.1 - 1.0 | Large differences, likely different models
+            float finalScore = (totalWeight > 0.0f) ? (totalWeightedDist / totalWeight) : 0.0f;
+            std::cout << "Final weighted distance score: " << finalScore << "\n";
         }
-        float jsdAvg = jsdSum / jsdResults.size();
-        std::cout << "Average JSD score: " << jsdAvg << "\n";
 
+        {
+            // Final score interpretation
+            // average JSD score
+            // 0.0 | Perfect match (identical predictions)
+            // 0.0001 - 0.001 | Practically indistinguishable
+            // 0.001 - 0.01 | Moderate variation, likely different versions/settings
+            // 0.01 - 0.1 | Large differences, likely different models
+            float jsdSum = 0.0f;
+            for (const auto& jsd : jsdResults) {
+                jsdSum += jsd;
+            }
+            float jsdAvg = jsdSum / jsdResults.size();
+            std::cout << "Average JSD score: " << jsdAvg << "\n";
+        }
+
+        {
+            float similaritySum = 0.0f;
+            for (const auto& similarity : similarityResults) {
+                similaritySum += similarity;
+            }
+            float similarityAvg = similaritySum / similarityResults.size();
+            std::cout << "Average similarity score: " << similarityAvg << "\n";
+        }
     }
     std::cout << '\n';
 
