@@ -23,6 +23,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <filesystem>
 
 struct GenerationStepData {
     std::string tokenStr;
@@ -54,7 +55,7 @@ public:
         std::vector<GenerationStepData> steps;
     };
 
-    GenerationResult generate(std::string prompt, uint32_t maxTokens) {
+    GenerationResult generate(std::string_view prompt, uint32_t maxTokens) {
         auto promptTokens = m_model->vocab().tokenize(prompt, true, true);
         return generate_impl(promptTokens, maxTokens);
     }
@@ -154,7 +155,7 @@ float normalizedEntropy(const ac::llama::TokenDataVector& data) {
 }
 
 
-std::vector<Model::GenerationResult> modelGeneration(Model& m1, Model& m2, const std::string& prompt, uint32_t maxTokens) {
+std::vector<Model::GenerationResult> modelGeneration(Model& m1, Model& m2, std::string_view prompt, uint32_t maxTokens) {
     auto res = m1.generate(prompt, maxTokens);
 
     auto genPromptTokens = m2.tokenize(res.initalPrompt);
@@ -188,8 +189,7 @@ std::vector<Model::GenerationResult> modelGeneration(Model& m1, Model& m2, const
 }
 
 // function to serialize the generation result in a file, so I can read it later
-void serialize(std::string& gguf, Model::GenerationResult& res) {
-    std::string filename = "gen-res_" + gguf + "_" + res.initalPrompt + ".bin";
+void serialize(std::string_view filename, std::string_view gguf, Model::GenerationResult& res) {
     std::ofstream f(filename, std::ios::binary);
     if (!f) {
         std::cerr << "Error opening file for writing: " << filename << "\n";
@@ -198,7 +198,7 @@ void serialize(std::string& gguf, Model::GenerationResult& res) {
 
     size_t ggufSize = gguf.size();
     f.write(reinterpret_cast<const char*>(&ggufSize), sizeof(ggufSize));
-    f.write(gguf.c_str(), gguf.size());
+    f.write(gguf.data(), gguf.size());
 
     size_t initialPromptSize = res.initalPrompt.size();
     f.write(reinterpret_cast<const char*>(&initialPromptSize), sizeof(initialPromptSize));
@@ -223,7 +223,7 @@ void serialize(std::string& gguf, Model::GenerationResult& res) {
     }
 }
 
-Model::GenerationResult deserialize(std::string filename) {
+Model::GenerationResult deserialize(std::string_view filename) {
     std::ifstream f(filename, std::ios::binary);
     if (!f) {
         std::cerr << "Error opening file for reading: " << filename << "\n";
@@ -277,7 +277,7 @@ Model::GenerationResult deserialize(std::string filename) {
     return res;
 }
 
-void runTest(Model::GenerationResult& r1, Model::GenerationResult& r2) {
+void runCompare(Model::GenerationResult& r1, Model::GenerationResult& r2) {
     std::vector<float> jsdResults;
     std::vector<float> similarityResults;
     float totalWeightedDist = 0.0f;
@@ -362,39 +362,43 @@ int main() try {
 
     // load model
     std::string tmpFolder = AC_TEST_DATA_LLAMA_DIR "/../../../tmp/";
-    // std::string modelGguf = "Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf";
-    std::string modelGguf = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
+    std::string modelGguf = "Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf";
+    // std::string modelGguf = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
     // std::string modelGguf = "BgGPT-Gemma-2-2B-IT-v1.0.Q8_0.gguf";
     // std::string modelGguf = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
-    std::string modelGguf2 = "Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf";
-    // std::string modelGguf2 = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
+    // std::string modelGguf2 = "Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf";
+    std::string modelGguf2 = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
 
-    std::string prompt = "The first person to";
+    // std::string prompt = "The first person to ";
+    std::string prompt = "Explain quantum physics in simple terms.";
     std::cout << "Prompt: " << prompt << "\n";
 
-#if 0
-    Model m1(tmpFolder + modelGguf, {});
-    Model m2(tmpFolder + modelGguf2, {});
-
-    auto genRes = modelGeneration(m1, m2, prompt, 100);
-    auto& r1 = genRes[0];
-    auto& r2 = genRes[1];
-    serialize(modelGguf, r1);
-    serialize(modelGguf2, r2);
-#else
     std::string res1fn = "gen-res_" + modelGguf + "_" + prompt + ".bin";
     std::string res2fn = "gen-res_" + modelGguf2 + "_" + prompt + ".bin";
+    bool shouldRunGenerate = !(std::filesystem::exists(res1fn) && std::filesystem::exists(res2fn));
 
-    auto r1 = deserialize(res1fn);
-    auto r2 = deserialize(res2fn);
-#endif
+    Model::GenerationResult r1;
+    Model::GenerationResult r2;
+    if (shouldRunGenerate) {
+        Model m1(tmpFolder + modelGguf, {});
+        Model m2(tmpFolder + modelGguf2, {});
+
+        auto genRes = modelGeneration(m1, m2, prompt, 100);
+        r1 = std::move(genRes[0]);
+        r2 = std::move(genRes[1]);
+        serialize(res1fn, modelGguf, r1);
+        serialize(res2fn, modelGguf2, r2);
+    } else {
+        r1 = deserialize(res1fn);
+        r2 = deserialize(res2fn);
+    }
 
     std::string result = prompt;
 
     std::cout << "Models to compare:\n" << modelGguf << "\n" << modelGguf2 << "\n";
     std::cout << "Comparing...\n";
 
-    runTest(r1, r2);
+    runCompare(r1, r2);
 
     return 0;
 }
