@@ -29,25 +29,7 @@ void fillLogits(TokenDataVector& out, llama_context* lctx) {
     out.resize(vocabSize);
 
     for (llama_token id = 0; id < vocabSize; id++) {
-        out[id] = {id, logits[id], 0.0f};
-    }
-}
-
-static void applySoftMax(TokenDataVector& data) {
-    // Apply softmax to the logits
-    // The vector should be sorted in descending order
-
-    float max_l = data[0].logit;
-    float cum_sum = 0.0f;
-
-    for (size_t i = 0; i < data.size(); ++i) {
-        float p = expf(data[i].logit - max_l);
-        data[i].prob = p;
-        cum_sum += p;
-    }
-
-    for (size_t i = 0; i < data.size(); ++i) {
-        data[i].prob /= cum_sum;
+        out[id] = {id, logits[id]};
     }
 }
 }
@@ -209,9 +191,7 @@ TokenDataVector Session::getSampledTokenData(int32_t topK, float /*topP*/) {
     });
 
     TokenDataVector result;
-    result.insert(result.end(), tempData.begin(), tempData.begin() + topK);
-
-    applySoftMax(result);
+    result.insert(result.end(), tempData.begin(), tempData.begin() + topK);;
 
     return result;
 }

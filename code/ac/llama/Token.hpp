@@ -12,7 +12,6 @@ inline constexpr Token Token_Invalid = -1;
 struct TokenData {
     Token token;
     float logit;
-    float prob;
 };
 
 using TokenDataVector = std::vector<TokenData>;

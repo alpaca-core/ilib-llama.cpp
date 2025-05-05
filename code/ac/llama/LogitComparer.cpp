@@ -4,9 +4,31 @@
 #include "LogitComparer.hpp"
 #include <cmath>
 #include <cassert>
+namespace {
+std::unordered_map<int32_t, float> softmax(const ac::llama::TokenDataVector& data) {
+    std::unordered_map<int32_t, float> result(data.size());
+
+    // Step 1: Find max logit to subtract for numerical stability
+    float maxLogit = data[0].logit;
+
+    // Step 2: Compute exp(logit - maxLogit) for each element
+    float sumExp = 0.0f;
+    for (size_t i = 0; i < data.size(); ++i) {
+        float p = std::exp(data[i].logit - maxLogit);
+        result[data[i].token] = p;
+        sumExp += p;
+    }
+
+    // Step 3: Normalize to get probabilities
+    for (auto& val : result) {
+        val.second /= sumExp;
+    }
+
+    return result;
+}
+}
 
 namespace ac::llama {
-
 // We apply 3 step comparison
 // 1. Compare the euclidean distance of the logits
 //  - If the distance is less than 2% of the max distance, we consider them equal
@@ -25,10 +47,8 @@ bool LogitComparer::compare(const TokenDataVector& data1, const TokenDataVector&
         return false;
     }
 
-    std::unordered_map<int32_t, float> prob_map, prob_map2;
-
-    for (const auto& p : data1) prob_map[p.token] = p.prob;
-    for (const auto& p : data2) prob_map2[p.token] = p.prob;
+    auto prob_map = softmax(data1);
+    auto prob_map2 = softmax(data2);
 
     // Check if at least 80% of the tokens are the same
     float matchingTokens = 0;
@@ -56,7 +76,7 @@ float LogitComparer::logitSimilarity(const TokenDataVector& data1, const TokenDa
     float weightedSimSum = 0.0f;
     float totalWeight = 0.0f;
     for (auto& t : data1) {
-        float weight = t.prob;
+        float weight = t.logit;
         float sim = 0.0f;
         if (l2_map.count(t.token)) {
             sim = 1 - (std::abs(t.logit - l2_map[t.token]) / std::max(t.logit, l2_map[t.token]));

@@ -347,11 +347,9 @@ public:
 
         std::vector<int32_t> tokens(tokenData.size());
         std::vector<float> logits(tokenData.size());
-        std::vector<float> probs(tokenData.size());
         for (size_t i = 0; i < tokenData.size(); i++) {
             tokens[i] = tokenData[i].token;
             logits[i] = tokenData[i].logit;
-            probs[i] = tokenData[i].prob;
         }
 
         instance.stopSession();
@@ -359,7 +357,6 @@ public:
         co_await io.push(Frame_from(sc::StateGeneralInstance::OpGetTokenData{}, {
             .tokens = std::move(tokens),
             .logits = std::move(logits),
-            .probs = std::move(probs)
         }));
     }
 
@@ -368,33 +365,23 @@ public:
         IoEndpoint& io,
         const sc::StateGeneralInstance::OpCompareTokenData::Params& iparams) {
 
-        auto& l1 = iparams.logits1.value();
-        auto& l2 = iparams.logits2.value();
-        auto& p1 = iparams.probs1.value();
-        auto& p2 = iparams.probs2.value();
         auto& t1 = iparams.tokens1.value();
         auto& t2 = iparams.tokens2.value();
-        assert(l1.size() == t1.size() && l1.size() == p1.size());
-        assert(l2.size() == t2.size() && l2.size() == p2.size());
+        auto& l1 = iparams.logits1.value();
+        auto& l2 = iparams.logits2.value();
+        assert(l2.size() == t2.size());
+        assert(l1.size() == t1.size());
 
         ac::llama::TokenDataVector data1;
-        data1.resize(t1.size());
+        data1.reserve(t1.size());
         for (size_t i = 0; i < t1.size(); i++) {
-            data1[i] = ac::llama::TokenData{
-                .token = t1[i],
-                .logit = l1[i],
-                .prob = p1[i]
-            };
+            data1.emplace_back(ac::llama::TokenData{ t1[i], l1[i] });
         }
 
         ac::llama::TokenDataVector data2;
-        data2.resize(t2.size());
+        data2.reserve(t2.size());
         for (size_t i = 0; i < t2.size(); i++) {
-            data2[i] = ac::llama::TokenData{
-                .token = t2[i],
-                .logit = l2[i],
-                .prob = p2[i]
-            };
+            data2.emplace_back(ac::llama::TokenData{ t2[i], l2[i] });
         }
 
         co_await io.push(Frame_from(sc::StateGeneralInstance::OpCompareTokenData{}, {
