@@ -75,19 +75,20 @@ float LogitComparer::logitSimilarity(const TokenDataVector& data1, const TokenDa
     for (const auto& t : data1) l_map[t.token] = t.logit;
     for (const auto& t : data2) l2_map[t.token] = t.logit;
 
+    float weightedSimSum = 0.0f;
+    float totalWeight = 0.0f;
     for (auto& t : data1) {
+        float weight = t.prob;
+        float sim = 0.0f;
         if (l2_map.count(t.token)) {
-            res += 1 - (std::abs(t.logit - l2_map[t.token]) / std::max(t.logit, l2_map[t.token]));
-        } else {
-            // Token not found in the second map
-            // we should penalize the result
-            // but we don't know how much
-            // so we just add 0.0f for now, maybe it should be another value
-            res += 0.0f; // Token not found in the second map
+            sim = 1 - (std::abs(t.logit - l2_map[t.token]) / std::max(t.logit, l2_map[t.token]));
         }
+
+        weightedSimSum += weight * sim;
+        totalWeight += weight;
     }
 
-    return res / data1.size();
+    return totalWeight > 0.0f ? (weightedSimSum / totalWeight) : 0.0f;
 }
 
 float LogitComparer::jsd(const std::unordered_map<Token, float>& probs1, const std::unordered_map<Token, float>& probs2) {
