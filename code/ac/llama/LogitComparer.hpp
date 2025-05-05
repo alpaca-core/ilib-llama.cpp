@@ -12,10 +12,6 @@ class LogitComparer {
 public:
     static bool compare(const TokenDataVector& data1, const TokenDataVector& data2);
 
-    static float JSD(const TokenDataVector& data1, const TokenDataVector& data2);
-
-    static float cosineDistance(const TokenDataVector& data1, const TokenDataVector& data2);
-
     static float logitSimilarity(const TokenDataVector& data1, const TokenDataVector& data2);
 
 private:

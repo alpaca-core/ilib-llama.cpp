@@ -128,32 +128,6 @@ private:
     ac::llama::Session* m_session;
 };
 
-// -- Helper function to compute normalized entropy --
-float normalizedEntropy(const ac::llama::TokenDataVector& data) {
-    std::vector<float> probs(data.size());
-    float sum = 0.0f;
-
-    // Calculate softmax probabilities
-    for (auto& val : data) {
-        sum += std::exp(val.logit);
-    }
-    for (size_t i = 0; i < data.size(); ++i) {
-        probs[i] = std::exp(data[i].logit) / sum;
-    }
-
-    // Calculate entropy
-    float entropy = 0.0f;
-    for (float p : probs) {
-        if (p > 0.0f) {
-            entropy -= p * std::log(p);
-        }
-    }
-
-    // Normalize entropy by maximum possible entropy (log(number of classes))
-    float maxEntropy = std::log(float(probs.size()));
-    return entropy / maxEntropy;
-}
-
 
 std::vector<Model::GenerationResult> modelGeneration(Model& m1, Model& m2, std::string_view prompt, uint32_t maxTokens) {
     auto res = m1.generate(prompt, maxTokens);
@@ -280,64 +254,18 @@ Model::GenerationResult deserialize(std::string_view filename) {
 void runCompare(Model::GenerationResult& r1, Model::GenerationResult& r2) {
     std::vector<float> jsdResults;
     std::vector<float> similarityResults;
-    float totalWeightedDist = 0.0f;
-    float totalWeight = 0.0f;
 
     for (size_t i = 0; i < r1.steps.size(); i++) {
         auto& step1 = r1.steps[i];
         auto& step2 = r2.steps[i];
-
-        // Calculate distance
-        float dist = ac::llama::LogitComparer::cosineDistance(step1.data, step2.data);
-
-        // Calculate weight based on normalized entropy
-        float weight = normalizedEntropy(step1.data);
-        totalWeightedDist += weight * dist;
-        totalWeight += weight;
-
-        // Calculate JSD
-        float jsd = ac::llama::LogitComparer::JSD(step1.data, step2.data);
-        jsdResults.push_back(jsd);
 
         // Calculate similarity
         float similarity = ac::llama::LogitComparer::logitSimilarity(step1.data, step2.data);
         similarityResults.push_back(similarity);
 
         std::cout << "Token: " << step1.tokenStr
-                << ", Weight: " << weight
-                << ", JSD: " << jsd
                 << ", Similarity: " << similarity
-                << ", Distance: " << dist
                 << "\n";
-    }
-
-
-    {
-        // Final step: Normalize
-
-        // Score range | Interpretation
-        // 0.0 | Perfect match (identical predictions)
-        // 0.0001 - 0.001 | Practically indistinguishable
-        // 0.001 - 0.01 | Very close, slight variation
-        // 0.01 - 0.1 | Moderate variation, likely different versions/settings
-        // 0.1 - 1.0 | Large differences, likely different models
-        float finalScore = (totalWeight > 0.0f) ? (totalWeightedDist / totalWeight) : 0.0f;
-        std::cout << "Final weighted distance score: " << finalScore << "\n";
-    }
-
-    {
-        // Final score interpretation
-        // average JSD score
-        // 0.0 | Perfect match (identical predictions)
-        // 0.0001 - 0.001 | Practically indistinguishable
-        // 0.001 - 0.01 | Moderate variation, likely different versions/settings
-        // 0.01 - 0.1 | Large differences, likely different models
-        float jsdSum = 0.0f;
-        for (const auto& jsd : jsdResults) {
-            jsdSum += jsd;
-        }
-        float jsdAvg = jsdSum / jsdResults.size();
-        std::cout << "Average JSD score: " << jsdAvg << "\n";
     }
 
     {
@@ -362,8 +290,8 @@ int main() try {
 
     // load model
     std::string tmpFolder = AC_TEST_DATA_LLAMA_DIR "/../../../tmp/";
-    std::string modelGguf = "Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf";
-    // std::string modelGguf = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
+    // std::string modelGguf = "Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf";
+    std::string modelGguf = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
     // std::string modelGguf = "BgGPT-Gemma-2-2B-IT-v1.0.Q8_0.gguf";
     // std::string modelGguf = "Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf";
     // std::string modelGguf2 = "Meta-Llama-3.1-70B-Instruct-Q5_K_S.gguf";

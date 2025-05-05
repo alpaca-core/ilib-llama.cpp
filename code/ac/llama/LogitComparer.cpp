@@ -46,29 +46,7 @@ bool LogitComparer::compare(const TokenDataVector& data1, const TokenDataVector&
     return jsd(prob_map, prob_map2) < 0.01f; // 1% divergence allowed
 }
 
-float LogitComparer::JSD(const TokenDataVector& data1, const TokenDataVector& data2) {
-    std::unordered_map<int32_t, float> prob_map, prob_map2;
-
-    for (const auto& p : data1) prob_map[p.token] = p.prob;
-    for (const auto& p : data2) prob_map2[p.token] = p.prob;
-
-    return jsd(prob_map, prob_map2);
-}
-
-float LogitComparer::cosineDistance(const TokenDataVector& data1, const TokenDataVector& data2) {
-    assert(data1.size() == data2.size());
-    float dot = 0.0f, normA = 0.0f, normB = 0.0f;
-    for (size_t i = 0; i < data1.size(); ++i) {
-        dot += data1[i].logit * data2[i].logit;
-        normA += data1[i].logit * data1[i].logit;
-        normB += data2[i].logit * data2[i].logit;
-    }
-    return 1.0f - (dot / (std::sqrt(normA) * std::sqrt(normB)));
-}
-
 float LogitComparer::logitSimilarity(const TokenDataVector& data1, const TokenDataVector& data2) {
-    float res = 0.0f;
-
     assert(data1.size() == data2.size());
     std::unordered_map<int32_t, float> l_map, l2_map;
 
