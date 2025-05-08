@@ -20,17 +20,18 @@ llama_batch makeInputBatch(std::span<const Token> tokens) {
     return llama_batch_get_one(nonConstTokens, int32_t(tokens.size()));
 }
 
-void fillLogits(TokenDataVector& out, llama_context* lctx) {
+TokenDataVector fillLogits(llama_context* lctx) {
     const auto* logits = llama_get_logits_ith(lctx, -1);
 
     const auto* lmodel = llama_get_model(lctx);
     const int vocabSize = llama_vocab_n_tokens(llama_model_get_vocab(lmodel));
 
-    out.resize(vocabSize);
-
+    TokenDataVector result(vocabSize);
     for (llama_token id = 0; id < vocabSize; id++) {
-        out[id] = {id, logits[id]};
+        result[id] = {id, logits[id]};
     }
+
+    return result;
 }
 }
 
@@ -180,18 +181,17 @@ Token Session::getToken() {
     return m_state.m_currToken;
 }
 
-TokenDataVector Session::getSampledTokenData(int32_t topK, float /*topP*/) {
+TokenDataVector Session::getSampledTokenData(int32_t topK) {
     flushPendingState();
 
-    TokenDataVector tempData;
-    fillLogits(tempData, m_ctx);
+    TokenDataVector tempData = fillLogits(m_ctx);
 
     std::sort(tempData.begin(), tempData.end(), [](const TokenData & a, const TokenData & b) {
         return a.logit > b.logit;
     });
 
     TokenDataVector result;
-    result.insert(result.end(), tempData.begin(), tempData.begin() + topK);;
+    result.insert(result.end(), tempData.begin(), tempData.begin() + topK);
 
     return result;
 }
